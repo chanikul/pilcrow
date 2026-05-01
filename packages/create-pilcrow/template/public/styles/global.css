@@ -1,0 +1,579 @@
+/* Pilcrow v1 — editorial theme
+ *
+ * Palette tokens on :root; Fraunces body + h1 (opsz 144 for display); Inter on <time> only.
+ * All palette references use var(--*) throughout this file.
+ *
+ * IMPORTANT — pretext measurement contract:
+ *   src/lib/typeset/playwright.ts reads THIS file at build time and extracts the
+ *   rules that affect pretext's canvas measurements:
+ *     html font-size, body font-family + line-height, .post-body max-width,
+ *     .post-body p margin-bottom, code font-family + font-size,
+ *     and the .lede .drop-cap block.
+ *   If you rename any of those selectors or properties, update playwright.ts too.
+ */
+
+/* ─── Palette tokens ─────────────────────────────────────────────────────── */
+:root {
+  --paper: #fafaf7;
+  --ink:   #1a1a1a;
+  --muted: #6c6a63;
+  --rule:  #d4d0c4;
+  --accent: #b13a2e;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 19px; /* restored from 18px: matches PoC parity and Butterick editorial range; 18px was accidental drift during v1 scaffold */
+}
+
+body {
+  font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  font-feature-settings: normal;
+  line-height: 1.7;
+  color: var(--ink);
+  background: var(--paper);
+  margin: 0;
+  padding: 4rem 1rem 2rem;
+}
+
+/* Constrain reading column */
+.post,
+.index {
+  max-width: 65ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* On wide viewports (≥1100px), expand .post to accommodate the sidenote margin
+ * column (25ch + 2rem gap). The prose column remains at 65ch in the Grid.
+ * .index stays at 65ch regardless (no sidenotes on the index page). */
+@media (min-width: 1100px) {
+  .post {
+    max-width: calc(65ch + 2rem + 25ch);
+  }
+}
+
+h1 {
+  font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-variation-settings: "opsz" 144;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  margin-top: 0;
+  margin-bottom: 0.25rem;
+}
+
+.post-header {
+  margin-bottom: 1.5rem;
+}
+
+/* Inter on <time> and post-list time only — body, h1, links stay Fraunces. */
+.post-header time,
+.post-list time {
+  display: block;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.post-list {
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0;
+}
+
+.post-list li {
+  margin-bottom: 1.5rem;
+}
+
+.post-list a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--rule);
+}
+
+.post-list a:hover {
+  text-decoration-color: var(--ink);
+}
+
+/* Links — warm amber-rust accent; WCAG AA 5.71:1 on --paper. */
+a {
+  color: var(--accent);
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+
+/* ─── Post body layout ───────────────────────────────────────────────────────
+ * D3=A: 4-column CSS Grid — left-gutter (0), prose (65ch), gap (2rem), margin (25ch).
+ *
+ * The .post wrapper (max-width 65ch, centred) keeps the overall reading column
+ * at the same horizontal position as before. The Grid expands .post-body to the
+ * right into the white space that exists outside the 65ch text column, so
+ * sidenotes occupy right-margin space that was already empty.
+ *
+ * Column assignments:
+ *   column 1 (left-gutter):   0 — collapses (reserved for future left-margin notes)
+ *   column 2 (prose):         65ch — the reading column
+ *   column 3 (gap):           2rem (D9g=A)
+ *   column 4 (right-margin):  25ch — sidenote column (D5=A)
+ *
+ * All direct block children of .post-body default to column 2 (prose).
+ * <aside class="sidenote"> elements are DIRECT Grid children (hoisted by
+ * rehype-hoist-sidenotes.ts) and use grid-column: 4.
+ *
+ * --prose-measure: the single source of truth for the body prose column width.
+ * Read by src/lib/typeset/playwright.ts via readMeasurementCSS() to constrain
+ * the loaderHTML measurement page. If this property is removed, the build
+ * throws a hard error.
+ *
+ * IMPORTANT — pretext measurement contract:
+ *   src/lib/typeset/playwright.ts reads THIS file at build time and extracts
+ *   aside.sidenote font-size and line-height so pretext measures sidenote
+ *   paragraphs at their actual rendered geometry.
+ *   If you rename aside.sidenote or change these two properties, update playwright.ts too.
+ *
+ * Architecture decision (master plan §11 / entry 17, corrective rebuild):
+ *   The .post wrapper centres the 65ch prose column; the Grid extends .post-body
+ *   beyond that boundary on the right to accommodate the 25ch sidenote margin.
+ *   On viewports ≥ 1100px (D4=C), sidenotes appear in the right margin via
+ *   grid-column: 4 (direct Grid child — enabled by rehype-hoist-sidenotes).
+ *   Below 1100px, the Grid collapses and sidenotes appear inline after their
+ *   anchor paragraph at full prose width.
+ *   Line-alignment strategy: α (Grid auto-row). Aside top edge aligns with
+ *   bottom of anchor <p>. Tufte-CSS-level. gwern-level pixel-precise alignment
+ *   is a v1.x candidate — see NOTES.md.
+ */
+.post-body {
+  /* Grid: left-gutter | 65ch prose | 2rem gap | 25ch sidenotes */
+  display: grid;
+  grid-template-columns: 0 65ch 2rem 25ch;
+  /* --prose-measure: single source of truth for body column width.
+   * Read by playwright.ts readMeasurementCSS() — do NOT remove. */
+  --prose-measure: 65ch;
+}
+
+.post-body > * {
+  grid-column: 2;
+}
+
+.post-body p {
+  margin-top: 0;
+  margin-bottom: 1.8rem;
+}
+
+/* Empty paragraphs emitted by the Markdown parser around block elements
+ * (figures, directives) must contribute zero vertical space. Without this,
+ * each <p></p> before/after a figure inherits margin-bottom: 1.8rem,
+ * producing ~8.6rem total gap instead of the intended ~5rem. */
+.post-body p:empty {
+  margin: 0;
+}
+
+/* Inline code — system monospace stack.
+ * IMPORTANT: the first family ("ui-monospace") must match the MONO_FAMILY
+ * constant in src/lib/typeset/playwright.ts so canvas measurements for
+ * code items reflect the same font the reader sees. */
+code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+/* Pretext line spans — structural only, no visual styling.
+ * Each <span class="pt-line"> holds exactly one typeset line of prose.
+ * display:block is required; without it the spans collapse inline and the
+ * pre-broken line structure is invisible to the browser. */
+.pt-line {
+  display: block;
+}
+
+/* Drop cap — lede paragraph first letter.
+ * IMPORTANT: these measurements are pretext-aware. Changing font-size,
+ * line-height, padding, or margin requires re-running `bun run build`
+ * so pretext can re-measure the float box and reflow the narrowed lines.
+ *
+ * font-weight: 500 — Fraunces has a true 500 weight that reads as belonging
+ * to the text (per Butterick). Georgia mapped 500 to 400; Fraunces honours it. */
+.lede .drop-cap {
+  float: left;
+  font-size: 4.6em;
+  line-height: 0.85;
+  font-weight: 500;
+  padding: 0.05em 0.08em 0 0;
+  margin-top: 0.05em;
+}
+
+/* Screen-reader duplicate of the cap letter.
+ * Keeps the letter in the accessibility tree without visual double rendering. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/* Prevent the drop-cap float from bleeding into the second paragraph. */
+.lede + p {
+  clear: left;
+}
+
+/* ─── Pull quote ─────────────────────────────────────────────────────────────
+ * Pilcrow pull quote primitive (master plan §7 / §14).
+ *
+ * Directive: :::pullquote ... ::: (via src/plugins/remark-pullquote.ts).
+ * HTML output: <aside class="pullquote"><blockquote><p>…</p>
+ *              [<footer><cite>Author</cite></footer>]</blockquote></aside>
+ *
+ * IMPORTANT — pretext measurement contract:
+ *   src/lib/typeset/playwright.ts reads THIS file at build time and extracts
+ *   the pull quote rules that affect pretext's canvas measurements:
+ *     .pullquote max-width + margin,
+ *     .pullquote blockquote p font-size + line-height + font-family + font-style,
+ *     .pullquote cite font-size + font-variant-caps + font-family.
+ *   If you rename any of those selectors or properties, update playwright.ts too.
+ *
+ * Design rationale (confirmed by human):
+ *   D11 font-size: 1.5× body (≈ 28.5px at 19px base)
+ *   D12 typeface: Fraunces italic 400
+ *   D13 hanging opening quote: text-indent -0.5em (eyeball flag — may adjust)
+ *   D14 line-height: 1.4
+ *   D15 measure: 50ch (centred via margin: auto within the 65ch container)
+ *   D16 vertical breathing: 2.5rem auto
+ *   D17 attribution face: Fraunces small caps
+ *   D18 attribution size: 0.85× body
+ *   D19 attribution colour: var(--muted)
+ *   D20 em-dash prefix: auto via cite::before { content: "— "; }
+ *   D21 chrome: zero borders, zero backgrounds, zero decorative glyphs
+ */
+
+.pullquote {
+  max-width: 50ch;
+  margin: 2.5rem auto;
+}
+
+.pullquote blockquote {
+  margin: 0;
+  padding: 0;
+}
+
+.pullquote blockquote p {
+  font-size: 1.5em;
+  line-height: 1.4;
+  font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  /* Hanging opening quote: shifts the visual left edge of the first line
+   * leftward so the opening quotation mark sits in the margin.
+   * Eyeball flag (D13): -0.5em may want adjustment to -0.4em or -0.6em
+   * after visual review against Fraunces italic open-quote glyph bearing. */
+  text-indent: -0.5em;
+  margin: 0;
+}
+
+.pullquote footer {
+  margin-top: 0.75rem;
+}
+
+.pullquote cite {
+  font-size: 0.85em;
+  font-style: normal;
+  font-variant-caps: small-caps;
+  font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  color: var(--muted);
+}
+
+/* Em-dash prefix for attribution — auto-inserted so the source text
+ * never needs a manually typed em-dash after the plugin strips it. */
+.pullquote cite::before {
+  content: "— ";
+}
+
+/* ─── Footnotes ──────────────────────────────────────────────────────────────
+ * GFM footnotes: <section data-footnotes class="footnotes"><ol><li><p>…</p></li></ol></section>
+ *
+ * IMPORTANT — pretext measurement contract:
+ *   src/lib/typeset/playwright.ts reads THIS file at build time and extracts
+ *   .footnotes p font-size and line-height so pretext measures footnote
+ *   paragraphs at their actual rendered geometry.
+ *   If you rename .footnotes p or change these two properties, update playwright.ts too.
+ *
+ * Design rationale (confirmed):
+ *   D11 marker font-size: 0.75em — smaller than body, rendered inside <sup>
+ *   D12 marker colour: inherits from a { color: var(--accent) } — no new rule needed
+ *   D13 marker text-decoration: none
+ *   D14 marker spacing: none (GFM default)
+ *   D15 footnote-list font-size: 0.875em
+ *   D16 footnote-list line-height: 1.5
+ *   D17 footnote-list margin-top: 3rem
+ *   D18 section break: pilcrow glyph ¶ — real DOM element, aria-hidden="true"
+ *       injected by src/plugins/rehype-footnote-mark.ts (approach b — safer
+ *       accessibility posture; pseudo-element Unicode glyphs are read aloud by
+ *       NVDA, JAWS, VoiceOver — documented behavior, approach a rejected).
+ *       Pilcrow glyph earns a quiet rendered presence on every footnoted post;
+ *       brand identity (§5) made visible in content for the first time.
+ */
+
+/* Footnote inline markers: <sup><a …>N</a></sup>
+ * font-size 0.75em applied to <sup> so the digit is proportionally scaled.
+ * text-decoration:none on the <a> prevents underline on the digit (the link
+ * target and aria-describedby are sufficient affordance for the reader).
+ * colour inherits from a { color: var(--accent) } — no new colour rule. */
+.footnotes-sup {
+  font-size: 0.75em;
+}
+
+/* GFM emits the marker as <sup><a …> — target the sup via the data attribute
+ * so we don't accidentally affect other sups in prose. */
+sup:has(a[data-footnote-ref]) {
+  font-size: 0.75em;
+}
+
+sup a[data-footnote-ref] {
+  text-decoration: none;
+}
+
+/* Footnote section — vertical separation and font scale. */
+.footnotes {
+  margin-top: 3rem;
+}
+
+/* Footnote-list paragraphs — smaller text, tighter leading. */
+.footnotes p {
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+
+/* Back-arrow link (↩) — inherit accent colour from cascade, no underline. */
+a[data-footnote-backref] {
+  text-decoration: none;
+}
+
+/* ─── Sidenotes ──────────────────────────────────────────────────────────────
+ * Pilcrow sidenote primitive (master plan §11 / entry 17, corrective rebuild).
+ *
+ * Directive: :::sidenote ... ::: (via src/plugins/remark-sidenote.ts).
+ * HTML output after rehype-hoist-sidenotes.ts:
+ *   <p>…anchor prose…<sup class="sidenote-marker" data-sidenote-id="N"></sup></p>
+ *   <aside class="sidenote" data-sidenote-id="N"><p>…note text…</p></aside>
+ *
+ * The <aside> is now a DIRECT child of .post-body (the Grid container), so
+ * grid-column: 4 works correctly. The float + negative-margin approach has
+ * been removed; grid-column is the only mechanism used on desktop.
+ *
+ * IMPORTANT — pretext measurement contract:
+ *   src/lib/typeset/playwright.ts reads THIS file at build time and extracts
+ *   aside.sidenote font-size and line-height so pretext measures sidenote
+ *   paragraphs at their actual rendered geometry.
+ *   If you rename aside.sidenote or change font-size/line-height, update playwright.ts too.
+ *
+ * Design rationale (all confirmed by human):
+ *   D2 = A   CSS counter "sidenote" — distinct from footnote counter
+ *   D5 = A   25ch measure (gwern territory)
+ *   D9a = A  numeric auto-counter, superscript
+ *   D9b = A  marker font-size 0.75em
+ *   D9c = A  marker colour var(--accent)
+ *   D9d = A  sidenote text font-size 0.85em
+ *   D9e = A  sidenote text line-height 1.4
+ *   D9f = B  sidenote text colour var(--muted) — subordinate commentary per Tufte
+ *   D9g = A  body↔margin gap 2rem (column 3 of the Grid)
+ *   Line-alignment: α (Grid auto-row, Tufte-CSS-level paragraph-end alignment)
+ */
+
+/* Counter reset on the body element that wraps the sidenotes. */
+.post-body {
+  counter-reset: sidenote;
+}
+
+/* Numeric superscript marker — content filled by CSS counter.
+ * After hoisting, the marker is a direct child of <p>, NOT inside .sidenote-ref.
+ * Selector .sidenote-marker (without wrapper context) is correct post-hoist. */
+.sidenote-marker {
+  font-size: 0.75em;
+  color: var(--accent);
+  counter-increment: sidenote;
+  cursor: default;
+}
+
+.sidenote-marker::before {
+  content: counter(sidenote);
+}
+
+/* The sidenote text block in the right margin column.
+ * After hoisting, <aside class="sidenote"> is a direct child of .post-body
+ * (the Grid container). grid-column: 4 places it in the 25ch right margin.
+ * Grid auto-row aligns the aside top edge with the bottom of the anchor <p>
+ * (Tufte-CSS-level, strategy α). */
+aside.sidenote {
+  /* Direct Grid child — pull into right-margin column (column 4). */
+  grid-column: 4;
+  width: 25ch;
+  font-size: 0.85em;
+  line-height: 1.4;
+  color: var(--muted);
+  margin: 0;
+  padding: 0;
+}
+
+aside.sidenote p {
+  margin: 0;
+}
+
+/* ─── Mobile sidenote fallback (D4=C: ≤1099px) ──────────────────────────────
+ * Below 1100px: collapse the Grid to a single prose column and show sidenotes
+ * inline after their anchor paragraph at full width.
+ *
+ * .post-body loses its grid layout; all elements flow as block.
+ * aside.sidenote appears as a block after its anchor <p>, indented with a
+ * left border for visual distinction. The counter marker remains inline in <p>.
+ */
+@media (max-width: 1099px) {
+  .post-body {
+    display: block;
+  }
+
+  aside.sidenote {
+    display: block;
+    width: auto;
+    margin: 0.5rem 0 1rem 1rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--rule);
+  }
+}
+
+/* ─── Pilcrow section break (D18) ────────────────────────────────────────────
+ * A centred ¶ glyph that marks the transition from body to footnote list.
+ * Injected by rehype-footnote-mark.ts as <div class="footnotes-mark" aria-hidden="true">.
+ * aria-hidden="true" prevents screen readers from announcing "pilcrow" or
+ * "paragraph sign" — the glyph is purely decorative/structural.
+ *
+ * Font-family inherits Fraunces from body — no redeclaration needed.
+ * Vertical breathing: margin-top 2rem + margin-bottom 1.5rem (within the
+ * .footnotes 3rem margin-top, so total visual gap is generous but not excessive). */
+.footnotes-mark {
+  text-align: center;
+  font-size: 1.5em;
+  color: var(--muted);
+  margin-top: 2rem;
+  margin-bottom: 1.5rem;
+}
+
+/* ─── Image figures (Pilcrow image pipeline) ─────────────────────────────────
+ * Built by src/plugins/rehype-images.ts from ![alt](src) Markdown syntax.
+ *
+ * HTML shape:
+ *   <figure class="pilcrow-figure" style="aspect-ratio: W / H">
+ *     <picture>
+ *       <source type="image/avif" srcset="…" sizes="…" />
+ *       <source type="image/webp" srcset="…" sizes="…" />
+ *       <img src="…" alt="…" loading="lazy" decoding="async" data-thumbhash="…" />
+ *     </picture>
+ *     [<figcaption>alt text</figcaption>]
+ *   </figure>
+ *
+ * Blur-up placeholder:
+ *   The inline <script> in Post.astro decodes data-thumbhash → data URL, sets
+ *   it as background-image on the <figure>, then fades the <img> in on load
+ *   and removes the placeholder background. Without JS the placeholder stays
+ *   static (acceptable degradation — loading="lazy" still works).
+ *
+ * aspect-ratio is set inline on <figure> (W/H from source metadata) so the
+ * browser reserves vertical space before the image loads, preventing CLS.
+ * The figcaption sits below the image and does NOT contribute to the reserved
+ * space — it appears after the image loads, which is fine for captions.
+ *
+ * Column width: the figure spans the full prose column (grid-column: 2).
+ * The image fills 100% of that column. On the post grid, .post-body > *
+ * defaults to grid-column: 2, so no explicit override is needed here.
+ *
+ * Design rationale (all sub-decisions made by architect per brief):
+ *   - max-width: 100% of prose column, no extension into margin
+ *   - margin: 3.5rem 0 — photographic-essay vertical breathing (Craig Mod register, master plan §13)
+ *   - figcaption: Inter, 0.85em, var(--muted), 0.5rem top padding
+ *   - transition: opacity 0 → 1, 300ms ease-in, for the blur-up reveal
+ */
+
+.pilcrow-figure {
+  margin: 3.5rem 0;
+  /* Ensure the figure does not overflow the prose column on narrow viewports. */
+  max-width: 100%;
+}
+
+.pilcrow-figure picture,
+.pilcrow-figure img {
+  display: block;
+  width: 100%;
+  /* height is controlled by aspect-ratio on the figure + width:100% here. */
+  height: auto;
+}
+
+/* Blur-up: <img> starts invisible; the inline script fades it in on load. */
+.pilcrow-figure img {
+  opacity: 0;
+  transition: opacity 300ms ease-in;
+}
+
+/* .loaded class is added by the blur-up script after img.onload fires. */
+.pilcrow-figure img.loaded {
+  opacity: 1;
+}
+
+.pilcrow-figure figcaption {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.85em;
+  /* Explicit line-height: multi-line captions inherit body 1.7 otherwise,
+   * which reads as disproportionately airy at caption scale.
+   * Matches aside.sidenote line-height for typographic consistency. */
+  line-height: 1.4;
+  color: var(--muted);
+  padding-top: 0.5rem;
+  /* Left-align captions under the image, consistent with the prose column. */
+  text-align: left;
+}
+
+/* ─── Pilcrow footer (growth loop) ──────────────────────────────────────────
+ * "Typeset with Pilcrow ¶" — rendered on every page when showPilcrowFooter
+ * is true in src/config/site.ts.
+ *
+ * Design rationale:
+ *   - Centred: reads as a colophon, like the printer's mark at the end of a
+ *     printed book. Centred attribution is the editorial register (not right-
+ *     aligned which reads as a UI widget).
+ *   - max-width 65ch: constrained to the prose column width so the footer
+ *     reads as part of the content column, not a viewport-wide strip.
+ *   - margin-top 4rem: deliberate breathing space between content and sign-off.
+ *   - margin-bottom 2rem: keeps the footer from pressing against the viewport
+ *     edge on short pages.
+ *   - font-family Inter: matches the meta-text register (<time>, figcaption).
+ *   - font-size 0.85em: same scale as captions and sidenotes.
+ *   - colour var(--muted): subordinate, not competing with body prose.
+ *   - a: inherits muted colour (overrides the accent link colour so the footer
+ *     link is understated — the brand mark is the text, not the colour).
+ *   - target: not _blank — editorial register; same-tab navigation.
+ *
+ * Toggle: set showPilcrowFooter: false in src/config/site.ts to remove entirely.
+ */
+.pilcrow-footer {
+  max-width: 65ch;
+  margin: 4rem auto 2rem;
+  text-align: center;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.pilcrow-footer a {
+  color: var(--muted);
+  text-decoration: none;
+  text-underline-offset: 0.15em;
+}
+
+.pilcrow-footer a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}

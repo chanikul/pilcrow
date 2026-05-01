@@ -1,0 +1,19 @@
+---
+import Post from '../../layouts/Post.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  // No draft filter here — drafts still build to direct URLs for testing/screenshots
+  const posts = await getCollection('posts');
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+<Post title={post.data.title} pubDate={post.data.pubDate} dropCap={post.data.dropCap} slug={post.id} hasImages={post.data.hasImages}>
+  <Content />
+</Post>

@@ -1,0 +1,157 @@
+# Pilcrow v1 — Notes & Deferred Decisions
+
+- [2026-05-01] **template/example.md sync — v1.x candidate.** `template/src/content/posts/example.md` and `src/content/posts/example.md` are conceptually the same content and should not drift; manual sync is fragile. v1.x candidate: build-time symlink, pre-commit check, or generate one from the other. Not blocking launch.
+
+- [2026-05-01] **Adjacent superscripts visually dense — v1.x candidate.** Line 27 of
+  `create-pilcrow/template/src/content/posts/example.md` places a sidenote marker and a
+  footnote reference adjacently, producing `¹²` with no separation. Not a rendering
+  error — both superscripts resolve correctly — but the pair reads as a single glyph at
+  small sizes. Likely fix: CSS rule `sup + sup { margin-left: 0.15em }` (or equivalent
+  `letter-spacing` on `<sup>` when consecutive), scoped to `.post-body`. Not blocking
+  launch; the current output is editorially acceptable. Fix in a single-line CSS edit
+  when the time is right.
+
+- [2026-04-29] Impeccable [single-font] false positive: `npx impeccable detect dist/` fires
+  `[single-font]` claiming only Fraunces is in use, because Impeccable can't follow external
+  CSS `<link>` hrefs to see that Inter is declared for `<time>` elements. The detection is
+  a tool limitation, not a design violation. Suppress or ignore; do not treat as blocking.
+  The fix (when needed) is to either inline the critical font-family rules in a `<style>` tag
+  or to add the `global.css` to `public/` so Impeccable can read it locally.
+
+- [2026-04-29] global.css is referenced via `href="/styles/global.css"` but `src/styles/`
+  is not automatically copied to `dist/` by Astro — only `public/` is. FIXED: global.css
+  moved to `public/styles/global.css`; `GLOBAL_CSS_PATH` in playwright.ts updated to match.
+  Lesson: `/review` passes must run against `bun run preview` output (actual HTTP), not source
+  files — source CSS intent and served CSS are not the same until public/ is the source of truth.
+
+- [2026-04-29] Per-line wrapping splits a single <a> across multiple sibling
+  <a> elements with the same href when the wrap falls inside a link. Screen
+  readers announce these as separate links. Acceptable for v1; structural
+  tradeoff of pretext's per-line approach. Possible v2 fix: wrap the
+  containing pt-line spans in a single outer <a> with role/aria adjustments,
+  but that complicates the line-span primitive. Defer.
+
+- [2026-04-29] **camelCase-as-atomic-pill — v1.x candidate.** Surfaced during
+  the inline-markup ¶3 link-wrap investigation. When prose contains identifier-
+  style tokens (camelCase / PascalCase, no spaces, length ≥ 12 — e.g.
+  `walkRichInlineLineRanges`), Hyphenopoly hyphenates them as English compounds
+  and pretext takes the SHY break, fragmenting the identifier mid-hump. The
+  right architectural fix is to flag such items with pretext's `break: 'never'`
+  in `walkNode` (rich-inline.ts treats `break: 'never'` items as atomic inline
+  pills — break before or after, never inside). This same model fits future
+  primitives: URLs in prose, hashtags, foreign-word pull-ins. Not implementing
+  in v1 — current mitigation is `<code>` markup for technical identifiers in
+  authored content. Detection heuristic for the future implementation:
+  `text.length >= 12 && /[a-z][A-Z]/.test(text) && !/\s/.test(text)`.
+
+- [2026-04-30] **gwern-level sidenote alignment — v1.x candidate.** The current
+  sidenote layout uses Grid auto-row (strategy α): the aside's top edge aligns
+  with the bottom of the anchor `<p>`. This is Tufte-CSS-level alignment —
+  correct, readable, and clean. gwern-level alignment means the sidenote's
+  first line aligns with the anchor word's text baseline inside the paragraph.
+  Achieving this requires knowing which pt-line span contains the anchor word,
+  computing its y-offset within the `<p>`, and using either `grid-row` pinning
+  or a `margin-top` offset on the `<aside>`. This is doable at build time
+  (pretext knows which line each word falls on) but requires extending
+  `rehype-hoist-sidenotes.ts` to accept line-position metadata from the
+  playwright typesetting pass — a meaningful pipeline change. Defer to v1.x;
+  the current paragraph-end alignment is correct typography and sufficient for v1.
+
+- [2026-04-29] **Test post realism note for the README pass.** The current
+  `inline-markup.md` ¶3 wraps three identifiers (`prepareRichInline`,
+  `walkRichInlineLineRanges`, `materializeRichInlineLineRange`) inside a single
+  `<a href>` separated by `and`. This is unusual for editorial prose — real
+  technical writing wraps each identifier in `<code>` (often inside the link).
+  Acceptable as a stress-test for v1's typeset pipeline, but when v1 example
+  posts are rewritten for the README / landing page, identifier-style content
+  should follow the technical-prose convention: `<a><code>name</code></a>` per
+  identifier. Content-authoring guidance, not engine work.
+
+---
+
+## Upstream pretext: softHyphenMode strict (FILED)
+
+Filed 2026-04-30 as https://github.com/chenglou/pretext/issues/162 — future commentary belongs on the GitHub thread, not in this file.
+
+[Original draft body, preserved as filed:]
+
+### Title
+
+Add `softHyphenMode: 'strict'` option to prevent grapheme-packing after soft-hyphen breaks
+
+### Body
+
+**Problem**
+
+When a soft hyphen (`­`) wins a line break, pretext's `continueSoftHyphenBreakableSegment` packs as many graphemes from the post-hyphen segment onto the current line as will fit within `maxWidth`. The result is that the materialized line text can end with a visible hyphen *plus* one or more extra characters — e.g. `"ital-i"` — while the next line opens with only the remaining fragment `"cs"` (2 chars). This produces a short right orphan fragment that is editorially unacceptable.
+
+The root cause: pretext is grapheme-aware, not syllable-aware, and has no visibility into the `rightmin` setting that the caller's hyphenation library (e.g. Hyphenopoly) used when inserting the soft hyphen. Hyphenopoly's `rightmin: 3` means the post-hyphen fragment is at least 3 chars *at the soft-hyphen position*, but after pretext packs graphemes, the fragment that wraps to the next line can be shorter.
+
+**Minimal repro**
+
+Paragraph text: `"There is something quietly remarkable about a sentence that carries emphasis for half its length: a quick brown fox jumps over a sleeping editor who never noticed the ital­ics were there."` (where `­` = U+00AD between `ital` and `ics`).
+
+At a column width where `ital-` just fits on line N but `ital-ics` does not: pretext emits `"...ital-i"` on line N (packing `i` from `ics` because it fits) and `"cs were there."` on line N+1. The right fragment is `i` + `cs` = `ics` (3 chars) split across two lines in a visually broken way.
+
+**Proposed API**
+
+Add a `softHyphenMode` option to `prepareWithSegments` (and `prepareRichInline`):
+
+```ts
+prepareWithSegments(text, font, {
+  softHyphenMode: 'strict' | 'pack-graphemes'  // default: 'pack-graphemes'
+})
+```
+
+- `'pack-graphemes'` (default, current behaviour): after a soft-hyphen break, pack as many graphemes from the post-hyphen segment as fit onto the current line. Backwards compatible.
+- `'strict'`: treat the post-hyphen segment as atomic. Either the *entire* post-hyphen segment fits on the current line (and no break is needed), or the line breaks *before* the soft hyphen (emitting the left stem + `-` + nothing else on line N). This respects the caller's intended `rightmin` semantics.
+
+**Rationale**
+
+- Editorial typography (Pilcrow's use case) requires strict: the hyphenation library's `rightmin` setting must be honoured end-to-end, or soft hyphens are not a reliable signal.
+- Browser `overflow-wrap: break-word` semantics (the original use case) can tolerate pack-graphemes: the goal there is fitting the most text possible, not preserving syllable integrity.
+- The default remains `pack-graphemes` for full backwards compatibility.
+
+**Current mitigation**
+
+Pilcrow v1 ships a local wrapper (`orphan-guard` in `src/lib/typeset/playwright.ts`) that detects orphan-producing breaks after the fact and re-runs pretext with the offending soft hyphen stripped. This is functional but adds latency for affected paragraphs and doesn't eliminate the root cause. The wrapper is explicitly documented as "remove when upstream ships `softHyphenMode: 'strict'`".
+
+Happy to contribute the upstream PR if helpful.
+
+---
+
+*Orphan guard added to Pilcrow v1 on 2026-04-29. Wrapper location: `src/lib/typeset/playwright.ts`, functions `guardFlat` and `guardRich`. Threshold: 4 chars right fragment. Recovery: targeted SHY strip (stem-search), re-run from paragraph start.*
+
+- [2026-04-30] **Case 2 regex widened from `{1,3}` to `{1,7}`.** The original cap missed packed-grapheme suffixes of 4+ chars (e.g. `con-strai` from `constraint`, surfaced in the sidenotes post critic review). Future widenings beyond `{1,7}` should be treated as a heuristic running out of road — at that suffix length the right move is `/review` to characterise root cause, not another bump; the upstream `softHyphenMode: 'strict'` fix (issue #162) remains the correct structural resolution.
+
+- [2026-04-30] **Literal-hyphen blind spot in Case 1 detection — mitigated locally.** Case 1 fires on any line ending with a visible `-`, but cannot distinguish a U+00AD soft-hyphen break (recoverable) from a literal U+002D in a compound word such as `drop-cap`, `well-being`, or `multi-script` (structural, editorially acceptable). When the recovery loop encountered a compound-word line-end it would strip all SHYs in the paragraph and emit a spurious "unrecoverable" warning. Fixed: `findOrphanSHYPos` now checks the source text for both `stem + U+00AD` (SHY-induced, strip it) and `stem + '-'` (literal hyphen, return `LITERAL_HYPHEN_BREAK`). Both `guardFlat` and `guardRich` accept the layout as-is on that sentinel without warning. This is one of several local mitigations for pretext's grapheme-aware (not syllable-aware) line-breaking semantics; the upstream `softHyphenMode: 'strict'` fix (draft issue above) would subsume this and the rest of the orphan-guard wrapper if it lands. Pilcrow's wrapper is acknowledged technical debt awaiting that upstream resolution.
+
+---
+
+## Packed-grapheme aesthetic findings — catalogue for issue #162
+
+The orphan-guard wrapper enforces `rightmin: 3` on the post-SHY residual and now catches packed-grapheme suffixes of 1–7 chars (regex `{1,7}` after the 2026-04-30 widening). It does not enforce *aesthetic* quality on the suffix itself. When pretext's `continueSoftHyphenBreakableSegment` packs 1–2 graphemes onto the SHY line and the next-line residual is ≥ 3, the guard correctly stays silent — but the visible line-end can still read awkwardly because the suffix is not a syllable boundary the eye expects.
+
+These are not orphan-class bugs. They are aesthetic-quality bugs of the same root cause as #162: pretext is grapheme-aware, not syllable-aware, and has no visibility into Hyphenopoly's intended break geometry. Logged here so the catalogue is discoverable when #162 lands, and so regression-testing can verify these specific cases improve.
+
+Surfaced by the sidenote-post critic review on 2026-04-30:
+
+- `sidenotes.md` V1 aside — `typo-gr` / `aphy` (word: *typography*; suffix `gr` packed; next residual `aphy`, 4 chars)
+- `sidenotes.md` V2 aside3 — `dif-f` / `erent` (word: *different*; suffix `f` packed; next residual `erent`, 5 chars) — most visually disruptive; the lone `f` between two doubled-letter contexts reads as a misprint
+- `sidenotes.md` V4 aside — `characterist-i` / `cally` (word: *characteristically*; suffix `i` packed)
+- `sidenotes.md` V4 aside — `character-i` / `stically` (same word, second instance, different SHY position)
+- `sidenotes.md` V5 aside — `com-fo` / `rtably` (word: *comfortably*; suffix `fo` packed)
+
+All five render at the 25ch sidenote margin measure where the column is narrow enough that the SHY-line packing is visible; body-prose at 65ch tends to absorb the same mechanism more gracefully because the line has more room to break naturally before the SHY position is forced.
+
+Mitigation: option A — accept and wait for upstream. Each instance is editorial-acceptable in isolation; the catalogue exists so when #162 lands, regression-testing can verify these specific cases improve.
+
+---
+
+## Deploy & distribution notes (added 2026-05-01)
+
+- **Cloudflare Pages Playwright note (v1.x candidate):** The `postinstall` script (`playwright install chromium`) installs ~120MB of Chromium into the build container. Cloudflare Pages free tier has a 25MB/s bandwidth and 20-minute build timeout — Chromium install is the most expensive build step. If build times become problematic, options: (a) cache `~/.cache/ms-playwright` via `PLAYWRIGHT_BROWSERS_PATH` env var pointing to a persistent path, or (b) investigate whether CF Pages supports custom build images with Chromium pre-installed. Document when it becomes a real constraint.
+
+- **create-pilcrow template drift (v1.x maintenance note):** The `packages/create-pilcrow/template/` directory is a copy of the engine files at a point in time. When engine files change (playwright.ts, plugins, global.css, layouts), the template must be updated in sync. There is currently no automated check for drift. v1.x candidate: a Bun script that diffs the template against the source and warns when they diverge.
+
+- **Starter package size (v1.x):** The `create-pilcrow` package is ~1.9MB unpacked, dominated by the Fraunces TTF (94KB) and the example JPEG image (1.6MB). If package size becomes a concern for `npx` UX, options: (a) remove the bundled JPEG and instruct users to add their own first image, (b) compress the JPEG further. For v1, having a working example image on first run is worth the size overhead.

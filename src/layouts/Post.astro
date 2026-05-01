@@ -1,0 +1,66 @@
+---
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  pubDate: Date;
+  dropCap?: boolean;
+  /** Post slug passed through to Base.astro for OG image URL construction. */
+  slug?: string;
+  /**
+   * True when the post contains images (set via hasImages front-matter).
+   * When true, an inline blur-up <script> is emitted to apply the thumbhash
+   * placeholder and fade the real image in on load. The script is a deliberate
+   * D1=A runtime-JS exception: it is a no-op if JS is disabled (placeholder
+   * stays static; loading="lazy" still works without JS).
+   */
+  hasImages?: boolean;
+}
+const { title, pubDate, dropCap, slug, hasImages } = Astro.props;
+
+const formattedDate = pubDate.toLocaleDateString('en-GB', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+// Opt-out: false only when explicitly set to false; absent = true (on by default).
+const dropCapEnabled = dropCap !== false;
+---
+<Base title={title} dropCap={dropCapEnabled} slug={slug}>
+  <article class="post">
+    <header class="post-header">
+      <h1>{title}</h1>
+      <time datetime={pubDate.toISOString()}>{formattedDate}</time>
+    </header>
+    {/* CONTRACT: src/integrations/pilcrow-typeset.ts targets '.post-body' to locate
+        the post prose. Do not rename this class without updating the integration. */}
+    <div class="post-body">
+      <slot />
+    </div>
+  </article>
+  {hasImages && (
+    <script>
+      // Pilcrow blur-up — D1=A inline script for image-bearing posts only.
+      // Reads data-placeholder (a thumbhash PNG data URL generated at build time)
+      // from each .pilcrow-figure, applies it as a background-image placeholder,
+      // then fades in the real <img> on load and removes the placeholder.
+      // No-op if JS is disabled; loading="lazy" continues to work without this.
+      (function () {
+        document.querySelectorAll('.pilcrow-figure[data-placeholder]').forEach(function (fig) {
+          var url = fig.getAttribute('data-placeholder');
+          if (!url) return;
+          fig.style.backgroundImage = 'url(' + url + ')';
+          fig.style.backgroundSize = 'cover';
+          var img = fig.querySelector('img');
+          if (!img) return;
+          function reveal() {
+            img.classList.add('loaded');
+            fig.style.backgroundImage = '';
+          }
+          if (img.complete) { reveal(); } else { img.addEventListener('load', reveal, { once: true }); }
+        });
+      })();
+    </script>
+  )}
+</Base>

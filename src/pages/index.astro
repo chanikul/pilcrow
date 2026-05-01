@@ -1,0 +1,31 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+
+// In production, hide drafts; in dev, show everything so test posts remain visible
+const allPosts = await getCollection('posts', ({ data }) =>
+  import.meta.env.PROD ? !data.draft : true
+);
+const posts = allPosts.sort(
+  (a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime()
+);
+---
+<Base title="Pilcrow ¶">
+  <main class="index">
+    <h1>Pilcrow ¶</h1>
+    <ul class="post-list">
+      {posts.map((post) => (
+        <li>
+          <a href={`/posts/${post.id}/`}>{post.data.title}</a>
+          <time datetime={post.data.pubDate.toISOString()}>
+            {post.data.pubDate.toLocaleDateString('en-GB', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </time>
+        </li>
+      ))}
+    </ul>
+  </main>
+</Base>

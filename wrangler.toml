@@ -1,0 +1,37 @@
+# Pilcrow — Cloudflare Pages configuration
+#
+# This file is read by `wrangler pages deploy` and by the Cloudflare dashboard
+# when the repository is connected via the Pages git-integration.
+#
+# To deploy:
+#   1. Connect the repository in the Cloudflare Pages dashboard.
+#   2. Set build command → bun run build, output directory → dist.
+#   3. The dashboard values take precedence over this file for the initial
+#      "Pages project" deployment; wrangler.toml is used when deploying via CLI.
+#
+# CLI deploy (after `bunx wrangler login`):
+#   bunx wrangler pages deploy dist --project-name pilcrow-press
+
+name            = "pilcrow-press"
+compatibility_date = "2026-05-01"
+
+[env.production]
+# No environment-specific overrides needed for v1.
+# Add vars here when deploying with custom domains or PILCROW_SKIP_TYPESET flags.
+
+# Pages-specific config lives in the dashboard build settings:
+#   Build command:    bun run build
+#   Output directory: dist
+#   Node.js version:  20 (or higher — Astro 6 requires Node ≥ 18.17.1)
+#   Install command:  bun install
+#
+# The dist/ directory is produced by `astro build` and contains the static
+# site; Cloudflare Pages serves it as-is. No server-side rendering is used.
+#
+# Playwright / Chromium note:
+#   The typesetting step (pilcrow-typeset integration) runs `playwright install
+#   chromium` in `postinstall`. Cloudflare Pages uses a Linux build environment
+#   that supports Playwright. If the build fails due to missing Chromium:
+#   - Add env var PLAYWRIGHT_BROWSERS_PATH=0 in the dashboard to force install
+#     to node_modules/ instead of the default ~/.cache/ms-playwright path.
+#   - Or: set PILCROW_SKIP_TYPESET=1 for a fast-but-untypeset build.

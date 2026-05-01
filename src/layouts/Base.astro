@@ -1,0 +1,53 @@
+---
+import { siteConfig } from '../config/site.ts';
+
+interface Props {
+  title: string;
+  /** Controls drop cap on the lede paragraph. Absent or true = on; false = off. */
+  dropCap?: boolean;
+  /**
+   * OG slug for the social share image.
+   *   - Post pages: pass the post.id (e.g. "hello") → /og/hello.png
+   *   - Index page: omit; falls back to /og/index.png
+   * Dimensions are always 1200×630 (D2=A).
+   */
+  slug?: string;
+}
+const { title, dropCap, slug } = Astro.props;
+
+// Canonical site origin — must match astro.config.mjs `site`.
+const SITE = 'https://pilcrow.press';
+const ogImage = slug
+  ? `${SITE}/og/${slug}.png`
+  : `${SITE}/og/index.png`;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+    {/* Google Fonts — Fraunces variable (body + h1) and Inter (time only). */}
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Inter:wght@400;600&display=swap" rel="stylesheet" />
+    {/* Drop-cap signal read by pilcrow-typeset integration at build time. */}
+    {dropCap !== undefined && <meta name="pilcrow:drop-cap" content={dropCap ? "true" : "false"} />}
+    {/* OG / Twitter card meta tags — D2=A 1200×630, D5=A glyph-alone card. */}
+    <meta property="og:title" content={title} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={ogImage} />
+  </head>
+  <body>
+    <slot />
+    {siteConfig.showPilcrowFooter && (
+      <footer class="pilcrow-footer">
+        <a href="https://pilcrow.press" rel="noopener">Typeset with Pilcrow ¶</a>
+      </footer>
+    )}
+  </body>
+</html>
