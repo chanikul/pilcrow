@@ -34,7 +34,7 @@ Pilcrow is for writers and developers who are comfortable with a terminal and gi
 
 ## Who this isn't for
 
-Pilcrow is not a CMS and will not become one. If you need a visual editor, drag-and-drop layout, or a hosted dashboard, there are better tools.
+Pilcrow is not a CMS and will not become one. If you need a visual editor, drag-and-drop layout, or a hosted dashboard, there are better tools. Pilcrow owns the build pipeline — it isn't a plugin you add to an existing WordPress, Webflow, Squarespace, or custom site. A standalone library (pilcrow-typeset) for integrating the typesetting layer into other build pipelines like Next.js or Eleventy is on the roadmap.
 
 ## Deploy
 
