@@ -539,6 +539,28 @@ export class PlaywrightRenderer implements TypesetRenderer {
           return first.includes(' ') ? `"${first}"` : first;
         }
 
+        /**
+         * Build the joined HTML of <span class="pt-line"> elements, injecting
+         * sidenote marker HTML (if any) into the LAST span rather than appending
+         * them after all spans.
+         *
+         * Why: pt-line spans are `display: block`. Appending an inline <sup>
+         * AFTER block siblings causes CSS anonymous block wrapping, which renders
+         * the marker as a standalone element on its own visual line below the
+         * paragraph — the "stray 1 in accent colour" bug. Placing the marker
+         * inside the last span keeps it inline at the end of the final line.
+         */
+        function buildLineSpansHTML(inners: string[], markers: string[]): string {
+          const markerHTML = markers.join('');
+          return inners
+            .map((inner, i) =>
+              i === inners.length - 1
+                ? `<span class="pt-line">${inner}${markerHTML}</span>`
+                : `<span class="pt-line">${inner}</span>`,
+            )
+            .join('');
+        }
+
         // ─── Hyphenation orphan guard ─────────────────────────────────────────────
         /**
          * Hyphenation orphan guard — Pilcrow-local mitigation.
@@ -1117,13 +1139,15 @@ export class PlaywrightRenderer implements TypesetRenderer {
                   guardedInners = guardRich(strippedItems, layoutCapRich, currentParaIdx);
                 }
 
-                const lineHTMLs = guardedInners.map(inner => `<span class="pt-line">${inner}</span>`);
-
                 // Reconstruct final paragraph HTML.
+                // Use buildLineSpansHTML so sidenote markers land inside the last
+                // span (inline) rather than after all block spans (anonymous block).
                 const capHTML =
                   `<span class="drop-cap" aria-hidden="true">${escapeHTML(capChar)}</span>` +
                   `<span class="visually-hidden">${escapeHTML(capChar)}</span>`;
-                p.innerHTML = capHTML + lineHTMLs.join('') + markerHTMLs.join('');
+                const lineSpansHTML = buildLineSpansHTML(guardedInners, markerHTMLs);
+                const lineHTMLs = guardedInners; // length still needed for totalLines
+                p.innerHTML = capHTML + lineSpansHTML;
                 totalLines += lineHTMLs.length;
                 continue; // done with this paragraph — skip normal dispatch below
               }
@@ -1162,7 +1186,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
               },
               currentParaIdx,
             );
-            p.innerHTML = guardedBrLines.map(inner => `<span class="pt-line">${inner}</span>`).join('') + markerHTMLs.join('');
+            p.innerHTML = buildLineSpansHTML(guardedBrLines, markerHTMLs);
             totalLines += guardedBrLines.length;
             continue;
           }
@@ -1185,7 +1209,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
               },
               currentParaIdx,
             );
-            p.innerHTML = guardedFlatLines.map(inner => `<span class="pt-line">${inner}</span>`).join('') + markerHTMLs.join('');
+            p.innerHTML = buildLineSpansHTML(guardedFlatLines, markerHTMLs);
             totalLines += guardedFlatLines.length;
             continue;
           }
@@ -1204,7 +1228,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
             },
             currentParaIdx,
           );
-          p.innerHTML = guardedRichLines.map(inner => `<span class="pt-line">${inner}</span>`).join('') + markerHTMLs.join('');
+          p.innerHTML = buildLineSpansHTML(guardedRichLines, markerHTMLs);
           totalLines += guardedRichLines.length;
         }
 
