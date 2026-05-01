@@ -1,6 +1,6 @@
 # My Pilcrow Blog
 
-A statically typeset blog built with [Pilcrow](https://pilcrow.press).
+A statically typeset blog built with [Pilcrow](https://pilcrow.page).
 
 ## Getting started
 

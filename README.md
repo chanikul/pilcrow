@@ -42,7 +42,7 @@ Cloudflare Pages is the recommended host: free at meaningful scale, fast globall
 
 ## Documentation
 
-Full documentation at [pilcrow.press](https://pilcrow.press).
+Full documentation at [pilcrow.page](https://pilcrow.page).
 
 ## Licence
 

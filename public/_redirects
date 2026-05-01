@@ -1,1 +1,6 @@
-https://pilcrow.dev/* https://pilcrow.press/:splat 301
+# Cloudflare Pages _redirects file.
+# Add rules here, one per line, in the format:
+#   <source-pattern> <destination> <status>
+# Example:
+#   /old-path/* /new-path/:splat 301
+# See: https://developers.cloudflare.com/pages/configuration/redirects/

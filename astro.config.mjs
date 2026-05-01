@@ -16,7 +16,7 @@ import yaml from 'js-yaml';
 // `astro:content` is a Vite virtual module — not importable at config-load
 // time — so we parse the markdown files directly using fs + js-yaml.
 // @astrojs/sitemap passes full absolute URLs to its `filter` callback
-// (e.g. https://pilcrow.press/posts/hello/); we match by extracting the
+// (e.g. https://pilcrow.page/posts/hello/); we match by extracting the
 // slug from the path segment after /posts/.
 const postsDir = new URL('./src/content/posts/', import.meta.url).pathname;
 const draftSlugs = new Set(
@@ -37,7 +37,7 @@ const draftSlugs = new Set(
 );
 
 export default defineConfig({
-  site: 'https://pilcrow.press',
+  site: 'https://pilcrow.page',
   integrations: [
     mdx(),
     sitemap({
@@ -46,7 +46,7 @@ export default defineConfig({
       // In dev, @astrojs/sitemap never generates output so this is academic,
       // but we return true for consistency with the rest of the codebase.
       filter: (url) => {
-        // Match URLs of the form https://pilcrow.press/posts/<slug>/
+        // Match URLs of the form https://pilcrow.page/posts/<slug>/
         const match = url.match(/\/posts\/([^/]+)\/?$/);
         if (!match) return true; // non-post URL (e.g. index) — always include
         return !draftSlugs.has(match[1]);

@@ -102,4 +102,4 @@ console.log('To write your first post, edit or replace:');
 console.log('  src/content/posts/example.md\n');
 console.log('To build for production:');
 console.log('  bun run build\n');
-console.log('Documentation: https://pilcrow.press\n');
+console.log('Documentation: https://pilcrow.page\n');

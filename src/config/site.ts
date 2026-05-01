@@ -7,7 +7,7 @@
  * ┌─────────────────────────────────────────────────────────────────────────┐
  * │ showPilcrowFooter                                                       │
  * │   When true (the default), every page shows a small footer:            │
- * │     "Typeset with Pilcrow ¶" → https://pilcrow.press                   │
+ * │     "Typeset with Pilcrow ¶" → https://pilcrow.page                    │
  * │   This is the growth loop (master plan §12). Toggle off if you want a  │
  * │   completely attribution-free site.                                     │
  * └─────────────────────────────────────────────────────────────────────────┘

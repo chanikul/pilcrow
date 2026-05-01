@@ -10,9 +10,9 @@
 #      "Pages project" deployment; wrangler.toml is used when deploying via CLI.
 #
 # CLI deploy (after `bunx wrangler login`):
-#   bunx wrangler pages deploy dist --project-name pilcrow-press
+#   bunx wrangler pages deploy dist --project-name pilcrow
 
-name            = "pilcrow-press"
+name            = "pilcrow"
 compatibility_date = "2026-05-01"
 
 [env.production]

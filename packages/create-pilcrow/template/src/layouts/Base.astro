@@ -16,7 +16,8 @@ interface Props {
 const { title, dropCap, slug } = Astro.props;
 
 // Canonical site origin — must match astro.config.mjs `site`.
-const SITE = 'https://pilcrow.press';
+// TODO: change this to your site's URL (and the matching value in astro.config.mjs).
+const SITE = 'https://example.com';
 const ogImage = slug
   ? `${SITE}/og/${slug}.png`
   : `${SITE}/og/index.png`;
@@ -46,7 +47,7 @@ const ogImage = slug
     <slot />
     {siteConfig.showPilcrowFooter && (
       <footer class="pilcrow-footer">
-        <a href="https://pilcrow.press" rel="noopener">Typeset with Pilcrow ¶</a>
+        <a href="https://pilcrow.page" rel="noopener">Typeset with Pilcrow ¶</a>
       </footer>
     )}
   </body>
