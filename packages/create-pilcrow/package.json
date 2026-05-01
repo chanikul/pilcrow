@@ -1,6 +1,6 @@
 {
   "name": "create-pilcrow",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create a new Pilcrow blog — editorial static-site generator with build-time typesetting",
   "keywords": [
     "pilcrow",
@@ -23,7 +23,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/pilcrow-press/pilcrow"
+    "url": "https://github.com/chanikul/pilcrow.git"
   },
   "homepage": "https://pilcrow.page"
 }
