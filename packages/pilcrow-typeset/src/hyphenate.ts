@@ -42,8 +42,8 @@ async function initHyphenopoly(): Promise<void> {
     // .pt-line spans. Pretext reads U+00AD (our SOFT_HYPHEN) for breaks —
     // U+200B is never consumed and permanently contaminates the output.
     compound: 'auto',
-    loader: async (file: string, patDir: URL) => {
-      return readFile(new URL(file, patDir));
+    loader: async (file: string) => {
+      return readFile(new URL(`../patterns/${file}`, import.meta.url));
     },
   });
 
@@ -132,7 +132,7 @@ export async function hyphenateHTML(html: string): Promise<string> {
   const PRE_SCAN_RE = /<(sub|sup)([^>]*)>([\s\S]*?)<\/\1>/gi;
   let preScanMatch: RegExpExecArray | null;
   while ((preScanMatch = PRE_SCAN_RE.exec(html)) !== null) {
-    const innerText = preScanMatch[3].replace(/<[^>]+>/g, '');
+    const innerText = preScanMatch[3]!.replace(/<[^>]+>/g, '');
     // D7: skip sub/sup entirely if its text content is digits-only (footnote
     // markers like "1", "12" must never be hyphenated regardless of length).
     // Non-digit superscripts (ordinals "th", "n", math "²") still evaluate
@@ -174,7 +174,7 @@ export async function hyphenateHTML(html: string): Promise<string> {
       const tagMatch = /^<(\/?)([a-zA-Z][a-zA-Z0-9]*)/.exec(token);
       if (tagMatch) {
         const isClose = tagMatch[1] === '/';
-        const tagName = tagMatch[2].toLowerCase();
+        const tagName = tagMatch[2]!.toLowerCase();
 
         if (tagName === 'code') {
           if (!isClose) {
@@ -212,7 +212,7 @@ export async function hyphenateHTML(html: string): Promise<string> {
             const shouldHyphenate = subSupOpenPositions.get(tokenStart) ?? false;
             subSupState.push({ tag: tagName, shouldHyphenate });
           } else {
-            if (subSupState.length > 0 && subSupState[subSupState.length - 1].tag === tagName) {
+            if (subSupState.length > 0 && subSupState[subSupState.length - 1]!.tag === tagName) {
               subSupState.pop();
             }
           }
@@ -237,7 +237,7 @@ export async function hyphenateHTML(html: string): Promise<string> {
         shouldHyphenate = false;
       } else if (subSupState.length > 0) {
         // Inside sub/sup — only hyphenate if the pre-scan said to
-        shouldHyphenate = subSupState[subSupState.length - 1].shouldHyphenate;
+        shouldHyphenate = subSupState[subSupState.length - 1]!.shouldHyphenate;
       }
 
       result += shouldHyphenate ? hyph(token) : token;

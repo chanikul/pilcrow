@@ -42,7 +42,7 @@
  */
 
 import { visit } from 'unist-util-visit';
-import type { Root, Element, Node, Parent } from 'hast';
+import type { Root, Element, Node } from 'hast';
 
 /** Check if a hast element has a given class name. */
 function hasClass(el: Element, cls: string): boolean {
@@ -64,7 +64,7 @@ export default function rehypeHoistSidenotes() {
     //   anchorIdx  — the anchorP's index in parent.children
     type SidenoteEntry = {
       span: Element;
-      parent: Parent;
+      parent: Root | Element;
       index: number;
       anchorP: Element | null;
       anchorIdx: number;
@@ -72,16 +72,16 @@ export default function rehypeHoistSidenotes() {
 
     const entries: SidenoteEntry[] = [];
 
-    visit(tree, 'element', (node: Element, index: number | undefined, parent: Parent | null) => {
+    visit(tree, 'element', (node: Element, index: number | undefined, parent: Root | Element | undefined) => {
       if (node.tagName !== 'span') return;
       if (!hasClass(node, 'sidenote-ref')) return;
-      if (parent === null || index === undefined) return;
+      if (parent === undefined || index === undefined) return;
 
       // Find the last <p> sibling BEFORE this span in document order.
       let anchorP: Element | null = null;
       let anchorIdx = -1;
       for (let i = index - 1; i >= 0; i--) {
-        const sibling = parent.children[i];
+        const sibling = parent.children[i]!;
         if (sibling.type === 'element' && (sibling as Element).tagName === 'p') {
           anchorP = sibling as Element;
           anchorIdx = i;

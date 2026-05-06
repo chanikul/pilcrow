@@ -17,7 +17,7 @@ import type { AstroIntegration } from 'astro';
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { PlaywrightRenderer } from '../lib/typeset/playwright.js';
+import { PlaywrightRenderer } from '../../packages/pilcrow-typeset/src/index.js';
 
 // Post body selector — must match the wrapper class in src/layouts/Post.astro.
 const POST_BODY_SELECTOR = '.post-body';

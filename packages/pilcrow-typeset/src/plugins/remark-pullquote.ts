@@ -106,7 +106,7 @@ function extractAttributionChildren(para: Paragraph): PhrasingContent[] {
 
   // Strip "— " from the leading text content.
   // The first child should be a text node starting with "— ".
-  const first = children[0];
+  const first = children[0]!;
   if (first.type === 'text') {
     const stripped = first.value.replace(ATTRIBUTION_PREFIX_RE, '');
     if (stripped.length === 0) {
@@ -163,7 +163,7 @@ export default function remarkPullquote() {
         );
       }
 
-      const quotePara = bodyParas[0];
+      const quotePara = bodyParas[0]!;
 
       // ─── Build the blockquote children ──────────────────────────────────────
       // The quote paragraph becomes a <p> inside the <blockquote>.
