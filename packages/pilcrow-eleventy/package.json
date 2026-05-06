@@ -1,0 +1,51 @@
+{
+  "name": "pilcrow-eleventy",
+  "version": "0.1.0",
+  "description": "Eleventy plugin that typesets your posts with Pilcrow at build time. Drop caps, sidenote-aware spans, hyphenation, per-line wrappers — same engine as pilcrow.page. Built on @chenglou/pretext.",
+  "keywords": [
+    "eleventy",
+    "eleventy-plugin",
+    "11ty",
+    "pilcrow",
+    "typography",
+    "typesetting",
+    "pretext"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "peerDependencies": {
+    "@11ty/eleventy": "^3.0.0",
+    "playwright": "^1.40.0"
+  },
+  "devDependencies": {
+    "@11ty/eleventy": "^3.0.0",
+    "@types/node": "^24.12.2",
+    "playwright": "^1.40.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.17.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanikul/pilcrow.git",
+    "directory": "packages/pilcrow-eleventy"
+  },
+  "homepage": "https://pilcrow.page"
+}
