@@ -44,16 +44,16 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "bunx tsc -p tsconfig.json",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@chenglou/pretext": "*",
+    "@chenglou/pretext": "^0.0.6",
     "hyphenopoly": "^6.1.0",
-    "playwright": "^1.40.0",
-    "unist-util-visit": "^5.0.0",
+    "mdast-util-directive": "^3.0.0",
     "mdast-util-from-markdown": "^2.0.0",
-    "mdast-util-directive": "^3.0.0"
+    "playwright": "^1.40.0",
+    "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.12.2"

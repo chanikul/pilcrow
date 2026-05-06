@@ -47,6 +47,38 @@ body {
   margin-right: auto;
 }
 
+/* ─── Site nav ───────────────────────────────────────────────────────────────
+ * Quiet, editorial top bar. Constrained to the prose column so it reads as
+ * part of the page, not a viewport-wide chrome strip. No new tokens.
+ */
+.site-nav {
+  max-width: 65ch;
+  margin: -2rem auto 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.85rem;
+}
+
+.site-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  text-underline-offset: 0.15em;
+}
+
+.site-nav a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--rule);
+}
+
+.site-nav-mark {
+  font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  font-weight: 500;
+}
+
 /* On wide viewports (≥1100px), expand .post to accommodate the sidenote margin
  * column (25ch + 2rem gap). The prose column remains at 65ch in the Grid.
  * .index stays at 65ch regardless (no sidenotes on the index page). */

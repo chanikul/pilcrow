@@ -1,0 +1,137 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="Pilcrow for Eleventy">
+  <main class="library-page">
+    <header class="library-header">
+      <p class="breadcrumb"><a href="/library/">Library</a> / Eleventy</p>
+      <h1>Pilcrow for Eleventy</h1>
+      <p class="lede-note">A plugin that hooks Eleventy's transform pipeline and runs the typesetter over every output page that opts in.</p>
+    </header>
+
+    <section>
+      <h2>What it does</h2>
+      <p>Once registered, the plugin opens a single headless Chromium for the build and adds an <code>addTransform</code> step that fires for every page Eleventy writes. Pages whose layout wraps their content in <code>&lt;div class="post-body"&gt;</code> have the inner paragraphs replaced by per-line <code>&lt;span class="pt-line"&gt;</code> spans. Pages without that wrapper are passed through untouched, so you can opt content in one layout at a time. Chromium closes when the build finishes. Nothing runs at the reader.</p>
+    </section>
+
+    <section>
+      <h2>Install</h2>
+      <pre><code>npm install --save-dev pilcrow-eleventy
+npx playwright install chromium</code></pre>
+      <p>Playwright is a peer dependency. The Chromium download is roughly 170 MB on first install; subsequent builds reuse the cached binary. The package is published on <a href="https://www.npmjs.com/package/pilcrow-eleventy">npm</a>.</p>
+    </section>
+
+    <section>
+      <h2>Minimal config</h2>
+      <p>In <code>eleventy.config.mjs</code>:</p>
+      <pre><code>import pilcrowEleventy from 'pilcrow-eleventy';
+
+export default function (eleventyConfig) &#123;
+  eleventyConfig.addPlugin(pilcrowEleventy);
+
+  return &#123;
+    dir: &#123; input: 'src', output: '_site' &#125;,
+  &#125;;
+&#125;</code></pre>
+      <p>Then in your post layout, wrap the content in the class the plugin keys on:</p>
+      <pre><code>&lt;article&gt;
+  &lt;h1&gt;&#123;&#123; title &#125;&#125;&lt;/h1&gt;
+  &lt;div class="post-body"&gt;
+    &#123;&#123; content | safe &#125;&#125;
+  &lt;/div&gt;
+&lt;/article&gt;</code></pre>
+      <p>That wrapper is the contract. Pages without it are passed through untouched, so adding the plugin to an existing site is non-destructive by construction.</p>
+    </section>
+
+    <section>
+      <h2>Options</h2>
+      <p>The plugin forwards options straight through to the engine. The interesting one is <code>dropCap</code>; the rest control measurement geometry and almost never need to be set, because the renderer reads font, column width, and line height from the page's own CSS by default.</p>
+      <pre><code>eleventyConfig.addPlugin(pilcrowEleventy, &#123;
+  dropCap: true, // false to disable the lede drop cap globally
+&#125;);</code></pre>
+      <p>For a per-post opt-out without changing the global default, drop a <code>&lt;meta name="pilcrow:drop-cap" content="false"&gt;</code> tag in the page head. Useful when the lede is a quotation or a list-introduction rather than running prose. The full options reference lives on the <a href="/library/api/">API page</a>.</p>
+    </section>
+
+    <section>
+      <h2>Common pitfalls</h2>
+      <p>The plugin needs Playwright Chromium available at build time, so build hosts that block browser sandboxing or omit Chromium binaries will not work. Vercel, Netlify, Cloudflare Pages, GitHub Actions, and GitLab CI are all confirmed working. If you are deploying inside a locked-down corporate runner, check whether Chromium can be installed before assuming the plugin will run.</p>
+      <p>The transform only fires on output paths ending in <code>.html</code>; CSS, JSON, and other passthrough formats are ignored. If your layout produces non-HTML output that contains a <code>post-body</code> wrapper for some reason, the plugin will pass it through.</p>
+      <p>The <code>post-body</code> wrapper has to be present in the rendered output, not just in your template. If your layout chain strips wrapper divs or renames the class, the plugin sees no anchor and the page goes through untouched. The fix is almost always a one-line layout change.</p>
+    </section>
+
+    <section>
+      <h2>Reference fixture</h2>
+      <p>A working end-to-end fixture lives in the repository at <a href="https://github.com/chanikul/pilcrow/tree/main/packages/pilcrow-eleventy/test/fixture">packages/pilcrow-eleventy/test/fixture</a>. It is the same project the plugin's tests run against, so it stays in sync with whatever the current released version supports.</p>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .library-page {
+    max-width: 65ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .library-header {
+    margin-bottom: 2.5rem;
+  }
+
+  .breadcrumb {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+
+  .breadcrumb a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .breadcrumb a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+  }
+
+  .lede-note {
+    color: var(--muted);
+    margin: 0.5rem 0 0;
+  }
+
+  .library-page section {
+    margin: 2.5rem 0;
+  }
+
+  .library-page h2 {
+    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
+  }
+
+  .library-page p {
+    margin: 0 0 1rem;
+  }
+
+  .library-page pre {
+    background: transparent;
+    border-left: 2px solid var(--rule);
+    padding: 0.5rem 0 0.5rem 1rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+    font-size: 0.85rem;
+  }
+
+  .library-page pre code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: inherit;
+    line-height: 1.5;
+    white-space: pre;
+  }
+
+  .library-page code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.9em;
+  }
+</style>

@@ -43,6 +43,10 @@ const ogImage = slug
     <meta name="twitter:image" content={ogImage} />
   </head>
   <body>
+    <nav class="site-nav" aria-label="Primary">
+      <a href="/" class="site-nav-mark">Pilcrow <span aria-hidden="true">¶</span></a>
+      <a href="/library/" class="site-nav-link">Library</a>
+    </nav>
     <slot />
     {siteConfig.showPilcrowFooter && (
       <footer class="pilcrow-footer">

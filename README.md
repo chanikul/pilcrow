@@ -10,6 +10,10 @@ Most blog posts on the web today are typeset by accident. The column is as wide 
 
 Pilcrow makes them. At build time, before the page reaches anyone, Pilcrow measures each paragraph at its actual rendered column width and computes where every line should end. What the reader receives is already set. The browser has nothing left to decide.
 
+## Use Pilcrow with your existing blog
+
+Already running Eleventy or Next.js? You don't need to rebuild your site to typeset it. The same engine that sets pilcrow.page is published as a small set of adapters: an Eleventy plugin, a Next.js rehype plugin, and a standalone library for everything else. Read the [Library](https://pilcrow.page/library/) for install instructions and pick the adapter that matches your stack.
+
 ## Built on pretext
 
 The line-breaking is done by [pretext](https://github.com/chenglou/pretext), [@chenglou](https://github.com/chenglou)'s multilingual text-measurement library. Pilcrow adds the editorial layer: drop caps, sidenotes, hyphenation, taste.
