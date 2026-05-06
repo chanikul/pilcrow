@@ -1,6 +1,6 @@
 {
   "name": "create-pilcrow",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Create a new Pilcrow blog — editorial static-site generator with build-time typesetting",
   "keywords": [
     "pilcrow",

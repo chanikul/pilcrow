@@ -28,8 +28,11 @@ Per sprint plan §3 Deliverable A. Astro project at repo root continues to impor
 | 2026-05-06 | 5: integration imports `PlaywrightRenderer` from `../../packages/pilcrow-typeset/src/index.js` | `src/integrations/pilcrow-typeset.ts` |
 | 2026-05-06 | 6: four directive plugins imported from `packages/pilcrow-typeset/src/plugins/`; `rehype-images` stays at `src/plugins/` (image pipeline not part of extraction) | `astro.config.mjs` |
 | 2026-05-06 | 3: public `typeset()` convenience function + 4 re-exports — surface verified already in place from extraction (sub-tasks 1–2); both gates re-verified clean; locked for v0.1.0 publish | `packages/pilcrow-typeset/src/index.ts` (no changes) |
+| 2026-05-06 | Deliverable B: `pilcrow-eleventy@0.1.0` adapter — Eleventy 3.x ESM plugin using `eleventy.before` / `eleventy.after` lifecycle events; addTransform on `.html` outputs containing `<div class="post-body">`; fixture builds 12 `pt-line` spans (commit `64a5ef4`) | `packages/pilcrow-eleventy/{src/index.ts,package.json,tsconfig.json,README.md,test/fixture/*}` |
+| 2026-05-06 | Deliverable C: `pilcrow-nextjs@0.1.0` adapter — rehype plugin for `@next/mdx` pipeline; build-time only (Next.js bundles MDX, runtime typesetting non-viable); MDX-JSX nodes detected and skipped (HTML round-trip can't preserve them); fixture builds 20 `pt-line` spans (commit `f1b057e`) | `packages/pilcrow-nextjs/{src/index.ts,package.json,tsconfig.json,README.md,test/fixture/*}` |
+| 2026-05-06 | A.1: prepare adapters for npm publish — switch both adapters from sibling-relative dist imports to named `from 'pilcrow-typeset'` imports; add `pilcrow-typeset` as a `file:..` dep for local fixture testing (Stream D mechanically swaps to `^0.1.0` at publish time, reverts after); fix `pilcrow-typeset` and `pilcrow-nextjs` `homepage` fields from `/library` to `pilcrow.page` (the routes don't exist until Deliverable D ships) (commit `f8a8993`) | `packages/pilcrow-{eleventy,nextjs}/{src/index.ts,package.json,bun.lock}`, `packages/pilcrow-typeset/package.json` |
 
-Remaining: sub-task 4 (Hyphenopoly patterns directory + `import.meta.url`-relative resolution); sub-task 8 (README); sub-task 9 (commit). Sub-task 7 (full `bun run build` verification) was already proven across sub-tasks 5 + 6 + 3.
+Remaining: Deliverable D (`/library/*` docs site routes) + Deliverable E (publish + push). 0.1.1 metadata patch is queued for Day 3 to point `homepage` fields back at `/library/api` and `/library/nextjs` once those routes are live.
 
 ---
 
