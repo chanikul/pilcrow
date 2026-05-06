@@ -1,0 +1,66 @@
+{
+  "name": "pilcrow-nextjs",
+  "version": "0.1.0",
+  "description": "Build-time editorial typesetting for Next.js MDX pipelines — drop caps, sidenote-aware lines, hyphenation. Built on @chenglou/pretext.",
+  "keywords": [
+    "pilcrow",
+    "nextjs",
+    "next",
+    "mdx",
+    "typography",
+    "typesetting",
+    "rehype",
+    "pretext",
+    "drop-cap",
+    "sidenote",
+    "hyphenation",
+    "build-time"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "hast-util-from-html": "^2.0.0",
+    "hast-util-to-html": "^9.0.0",
+    "pilcrow-typeset": "file:../pilcrow-typeset",
+    "unist-util-visit": "^5.0.0"
+  },
+  "devDependencies": {
+    "@mdx-js/loader": "^3.0.0",
+    "@mdx-js/react": "^3.0.0",
+    "@next/mdx": "^15.0.0",
+    "@types/node": "^24.12.2",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "next": ">=14",
+    "playwright": "^1.40.0"
+  },
+  "engines": {
+    "node": ">=18.17.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanikul/pilcrow.git",
+    "directory": "packages/pilcrow-nextjs"
+  },
+  "homepage": "https://pilcrow.page"
+}

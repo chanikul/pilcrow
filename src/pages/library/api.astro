@@ -1,0 +1,203 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="pilcrow-typeset API">
+  <main class="library-page">
+    <header class="library-header">
+      <p class="breadcrumb"><a href="/library/">Library</a> / API</p>
+      <h1>pilcrow-typeset</h1>
+      <p class="lede-note">The typesetting engine, as a library. The reference for any build pipeline that is not Astro, Eleventy, or Next.js.</p>
+    </header>
+
+    <section>
+      <h2>What it is</h2>
+      <p>Given a block of HTML, <code>pilcrow-typeset</code> opens a headless Chromium, lays the HTML out at the column width and font shorthand you tell it (or reads them from your own CSS), and replaces every <code>&lt;p&gt;</code> with per-line <code>&lt;span class="pt-line"&gt;</code> wrappers. The output is static HTML you serve as-is. No JavaScript runs at the reader.</p>
+      <p>Hyphenation runs in Node via Hyphenopoly's en-gb pattern set, which ships with the package. Soft hyphens are inserted before the typesetter sees the markup, so line breaks land at syllable boundaries rather than wherever the browser would otherwise have guessed.</p>
+    </section>
+
+    <section>
+      <h2>Install</h2>
+      <pre><code>npm install pilcrow-typeset
+npx playwright install chromium</code></pre>
+      <p>Playwright is a peer dependency; the Chromium download is roughly 170 MB on first install. Node 18.17.1 or newer. The package is published on <a href="https://www.npmjs.com/package/pilcrow-typeset">npm</a>.</p>
+    </section>
+
+    <section>
+      <h2>Single-shot</h2>
+      <p>For one-off documents — opens Chromium, typesets, tears down. The lifecycle is dominated by browser spin-up. Fine for a one-off; wasteful for a build job that processes many documents.</p>
+      <pre><code>import &#123; typeset &#125; from 'pilcrow-typeset';
+
+const &#123; html, lineCount, paragraphCount &#125; = await typeset(bodyHTML);</code></pre>
+    </section>
+
+    <section>
+      <h2>Batch</h2>
+      <p>For build integrations, keep one browser alive across many documents. The <code>try/finally</code> matters: if <code>typeset()</code> throws, <code>close()</code> still runs. A leaked Chromium will hang the build.</p>
+      <pre><code>import &#123; PlaywrightRenderer &#125; from 'pilcrow-typeset';
+
+const renderer = new PlaywrightRenderer();
+await renderer.open();
+try &#123;
+  for (const doc of documents) &#123;
+    const &#123; html &#125; = await renderer.typeset(doc.html, &#123; dropCap: doc.dropCap &#125;);
+    writeFile(doc.outPath, splice(doc.outerHTML, html));
+  &#125;
+&#125; finally &#123;
+  await renderer.close();
+&#125;</code></pre>
+      <p>This is the shape both adapters use internally. See <a href="/library/eleventy/">Eleventy</a> and <a href="/library/nextjs/">Next.js</a> for the integration glue around the same renderer.</p>
+    </section>
+
+    <section>
+      <h2>TypesetOptions</h2>
+      <p>The empty-string and zero defaults are deliberate. They tell the renderer to read font, width, and line height from the CSS already loaded on the measurement page, so your stylesheet stays the source of truth for geometry.</p>
+      <table class="options">
+        <thead>
+          <tr><th>Field</th><th>Type</th><th>Default</th><th>Meaning</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>fontShorthand</code></td><td><code>string</code></td><td><code>''</code></td><td>CSS font shorthand (e.g. <code>"18px ui-serif"</code>). Empty reads the computed value from the page's CSS.</td></tr>
+          <tr><td><code>maxWidth</code></td><td><code>number</code></td><td><code>0</code></td><td>Column width in CSS pixels. Zero falls back to the page's <code>clientWidth</code>.</td></tr>
+          <tr><td><code>lineHeight</code></td><td><code>number</code></td><td><code>0</code></td><td>Line height in CSS pixels. Zero reads from computed style.</td></tr>
+          <tr><td><code>postPath</code></td><td><code>string?</code></td><td>—</td><td>Identifier used in build warnings (<code>"posts/foo"</code>).</td></tr>
+          <tr><td><code>dropCap</code></td><td><code>boolean?</code></td><td><code>true</code></td><td>Drop cap on the lede paragraph. Pass <code>false</code> to opt out.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Return value</h2>
+      <p>Both <code>typeset()</code> and <code>renderer.typeset()</code> resolve to the same shape:</p>
+      <pre><code>&#123;
+  html: string;          // typeset HTML, ready to splice into your output
+  lineCount: number;     // total pt-line spans produced
+  paragraphCount: number;// paragraphs the renderer touched
+&#125;</code></pre>
+      <p>The counts are useful for build logs and for deciding when a paragraph went unprocessed (a paragraph containing unsupported inline markup falls back to the flat path; the count tells you how many paragraphs reached the renderer at all).</p>
+    </section>
+
+    <section>
+      <h2>Exports</h2>
+      <ul class="exports">
+        <li><code>typeset(html, options?)</code> — single-shot convenience.</li>
+        <li><code>PlaywrightRenderer</code> — the renderer implementation; managed lifecycle.</li>
+        <li><code>TypesetRenderer</code> — the interface every renderer satisfies. Today there is one. When pretext ships server-side rendering upstream, the next implementation drops in here.</li>
+        <li><code>TypesetOptions</code> — the options struct documented above.</li>
+        <li><code>hyphenateHTML(html)</code> — the Node-side soft-hyphen injector, exposed for callers that want hyphenation without the Chromium pass.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Build environment</h2>
+      <p>This package runs Playwright Chromium during your build. The build host therefore needs to allow installing and launching Chromium. Confirmed working on Vercel, Netlify, Cloudflare Pages, GitHub Actions, and GitLab CI. Locked-down CI environments without sandboxing or with no browser binaries are not supported. Build time scales with post count plus a fixed Chromium spin-up cost paid once per build.</p>
+    </section>
+
+    <section>
+      <h2>Credit</h2>
+      <p>The line-breaking primitive is <a href="https://github.com/chenglou/pretext">pretext</a> by <a href="https://github.com/chenglou">Cheng Lou</a>. Pretext is the multilingual text-measurement library that decouples layout from the DOM; it is the load-bearing wall under everything <code>pilcrow-typeset</code> exposes. The editorial layer above it (drop caps, sidenote-aware spans, en-gb hyphenation, the orphan guard) is the easy part. Most of the credit for what you see on the page belongs upstream.</p>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .library-page {
+    max-width: 65ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .library-header {
+    margin-bottom: 2.5rem;
+  }
+
+  .breadcrumb {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+
+  .breadcrumb a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .breadcrumb a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+  }
+
+  .lede-note {
+    color: var(--muted);
+    margin: 0.5rem 0 0;
+  }
+
+  .library-page section {
+    margin: 2.5rem 0;
+  }
+
+  .library-page h2 {
+    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
+  }
+
+  .library-page p {
+    margin: 0 0 1rem;
+  }
+
+  .library-page pre {
+    background: transparent;
+    border-left: 2px solid var(--rule);
+    padding: 0.5rem 0 0.5rem 1rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+    font-size: 0.85rem;
+  }
+
+  .library-page pre code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: inherit;
+    line-height: 1.5;
+    white-space: pre;
+  }
+
+  .library-page code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.9em;
+  }
+
+  .options {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.9rem;
+  }
+
+  .options th,
+  .options td {
+    text-align: left;
+    padding: 0.5rem 0.75rem 0.5rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+
+  .options th {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+
+  .exports {
+    margin: 1rem 0;
+    padding-left: 1.25rem;
+  }
+
+  .exports li {
+    margin-bottom: 0.5rem;
+  }
+</style>

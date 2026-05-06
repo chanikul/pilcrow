@@ -1,0 +1,154 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="Pilcrow for Next.js">
+  <main class="library-page">
+    <header class="library-header">
+      <p class="breadcrumb"><a href="/library/">Library</a> / Next.js</p>
+      <h1>Pilcrow for Next.js</h1>
+      <p class="lede-note">A build-time rehype plugin that drops Pilcrow typesetting into a Next.js MDX pipeline.</p>
+    </header>
+
+    <section class="callout">
+      <h2>Build-time only</h2>
+      <p>Next.js bundles MDX at compile time. Running headless Chromium per request inside a serverless or edge runtime is not viable, so <strong>this plugin runs at <code>next build</code> time only</strong>. The pt-line spans are baked into the compiled MDX output. Nothing typeset-related runs at the reader, and nothing runs at the request edge. If you need request-time typesetting, this is the wrong tool.</p>
+    </section>
+
+    <section>
+      <h2>What it does</h2>
+      <p>When <code>next build</code> compiles an <code>.mdx</code> file, the plugin intercepts the rehype pass, serialises the post body to HTML, runs <code>typeset()</code> over it, and parses the result back into the HAST tree before Next.js's MDX bundler turns it into JavaScript. Drop caps, hyphenation, and per-line spans are handled by <code>pilcrow-typeset</code>. A single Chromium instance opens on first invocation per build process and is reused across files, so you pay the browser-launch cost once.</p>
+    </section>
+
+    <section>
+      <h2>Install</h2>
+      <pre><code>npm install pilcrow-nextjs pilcrow-typeset @next/mdx @mdx-js/loader @mdx-js/react
+npx playwright install chromium</code></pre>
+      <p>Playwright is a peer dependency. The Chromium download is roughly 170 MB on first install. The package is published on <a href="https://www.npmjs.com/package/pilcrow-nextjs">npm</a>.</p>
+    </section>
+
+    <section>
+      <h2>next.config.mjs</h2>
+      <pre><code>import createMDX from '@next/mdx';
+import pilcrowNext from 'pilcrow-nextjs';
+
+const withMDX = createMDX(&#123;
+  extension: /\.mdx?$/,
+  options: &#123;
+    remarkPlugins: [],
+    rehypePlugins: [[pilcrowNext, &#123;&#125;]],
+  &#125;,
+&#125;);
+
+/** @type &#123;import('next').NextConfig&#125; */
+const nextConfig = &#123;
+  pageExtensions: ['ts', 'tsx', 'js', 'jsx', 'md', 'mdx'],
+&#125;;
+
+export default withMDX(nextConfig);</code></pre>
+      <p>The plugin is the last rehype step you want before the MDX code generator runs, because the typesetter measures against the final rendered HTML structure.</p>
+    </section>
+
+    <section>
+      <h2>Options</h2>
+      <pre><code>rehypePlugins: [[pilcrowNext, &#123;
+  fontShorthand: '18px ui-serif',
+  maxWidth: 720,
+  lineHeight: 30,
+  dropCap: true,
+&#125;]]</code></pre>
+      <p>The empty-string and zero defaults are deliberate. Leaving them at the defaults tells the renderer to read font, column width, and line height from your CSS at typeset time, so your stylesheet stays the source of truth for measurement geometry. The full options reference lives on the <a href="/library/api/">API page</a>.</p>
+    </section>
+
+    <section>
+      <h2>Common pitfalls</h2>
+      <p>The build host has to be able to install and launch Playwright Chromium. Vercel, Netlify, Cloudflare Pages, GitHub Actions, and GitLab CI are confirmed working. Locked-down build images that block browser sandboxing or omit the Chromium binary will not work; if your CI runs inside a stripped container, check first.</p>
+      <p>Pure-Markdown <code>.mdx</code> files typeset normally. Files that contain JSX components or <code>&#123;expression&#125;</code> nodes hold MDX-AST shapes that cannot survive the HTML round-trip the plugin performs. When the plugin sees one it logs a warning to stderr naming the file and returns the tree unchanged for that file. If you want the body content typeset, move the JSX out into a layout or a surrounding page so the body itself stays plain Markdown.</p>
+      <p>The plugin assumes the MDX file <em>is</em> the post body. If your route renders the MDX inside a wrapper that adds the prose column CSS, that wrapper has to be loaded by the typesetter's measurement page in the same shape as the production page; otherwise the line breaks will be measured against the wrong column width. The default behaviour reads from the CSS already on the page, so the most common cause of this is a stylesheet that loads after the typesetter measures.</p>
+    </section>
+
+    <section>
+      <h2>Reference fixture</h2>
+      <p>A working end-to-end fixture lives in the repository at <a href="https://github.com/chanikul/pilcrow/tree/main/packages/pilcrow-nextjs/test/fixture">packages/pilcrow-nextjs/test/fixture</a>. It is the same project the plugin's tests run against, so it stays in sync with the current released version.</p>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .library-page {
+    max-width: 65ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .library-header {
+    margin-bottom: 2.5rem;
+  }
+
+  .breadcrumb {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+
+  .breadcrumb a {
+    color: var(--muted);
+    text-decoration: none;
+  }
+
+  .breadcrumb a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+  }
+
+  .lede-note {
+    color: var(--muted);
+    margin: 0.5rem 0 0;
+  }
+
+  .callout {
+    border-left: 3px solid var(--accent);
+    padding: 0.25rem 0 0.25rem 1rem;
+    margin: 2rem 0;
+  }
+
+  .callout h2 {
+    margin-top: 0.25rem;
+  }
+
+  .library-page section {
+    margin: 2.5rem 0;
+  }
+
+  .library-page h2 {
+    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 0.75rem;
+  }
+
+  .library-page p {
+    margin: 0 0 1rem;
+  }
+
+  .library-page pre {
+    background: transparent;
+    border-left: 2px solid var(--rule);
+    padding: 0.5rem 0 0.5rem 1rem;
+    margin: 1rem 0;
+    overflow-x: auto;
+    font-size: 0.85rem;
+  }
+
+  .library-page pre code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: inherit;
+    line-height: 1.5;
+    white-space: pre;
+  }
+
+  .library-page code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.9em;
+  }
+</style>

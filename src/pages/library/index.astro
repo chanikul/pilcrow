@@ -1,0 +1,94 @@
+---
+import Base from '../../layouts/Base.astro';
+---
+<Base title="Pilcrow Library">
+  <main class="library">
+    <header class="library-header">
+      <h1>Library</h1>
+      <p class="lede-note">Three ways to put Pilcrow into a build pipeline. Pick the one that matches the tools you already use.</p>
+    </header>
+
+    <section class="library-options">
+      <article class="option">
+        <h2><a href="https://www.npmjs.com/package/create-pilcrow">Astro starter via <code>create-pilcrow</code></a></h2>
+        <p>If you have no blog yet and Astro is acceptable as the host framework, start here. <code>npx create-pilcrow my-blog</code> scaffolds a complete Astro project with the typesetting layer, image pipeline, OG cards, RSS, and sitemap pre-wired. The shape of the repository assumes you want what pilcrow.page itself ships, so the cost of getting started is roughly zero and the cost of disagreeing later is rewriting some Astro plumbing. Choose this when you are starting fresh and the editorial defaults are close enough to what you want that arguing with them is not worth your evening.</p>
+      </article>
+
+      <article class="option">
+        <h2><a href="/library/eleventy/">Eleventy plugin (<code>pilcrow-eleventy</code>)</a></h2>
+        <p>If you already run an Eleventy site, or you prefer the 11ty model of small composable transforms over a framework that owns your routing, install <code>pilcrow-eleventy</code>. It registers as an ordinary plugin, opens one headless Chromium for the build, and replaces the inner paragraphs of any page that wraps its content in <code>&lt;div class="post-body"&gt;</code>. Pages without that wrapper pass through untouched, so you can opt content in one layout at a time. Choose this when your site already exists and you want typesetting added to it rather than around it.</p>
+      </article>
+
+      <article class="option">
+        <h2><a href="/library/nextjs/">Next.js plugin (<code>pilcrow-nextjs</code>)</a></h2>
+        <p>If your blog lives inside a Next.js application alongside product surfaces, install <code>pilcrow-nextjs</code> as a rehype plugin in the <code>@next/mdx</code> pipeline. The work happens at <code>next build</code> time only; serverless and edge runtimes are not viable hosts for Playwright. The output is static HTML baked into the compiled MDX, which means nothing ships to the reader at runtime on the typesetter's account. Choose this when Next.js is already paying its way for the rest of the site and you would rather add a build step than maintain a separate publishing tool.</p>
+      </article>
+    </section>
+
+    <section class="library-api">
+      <h2>The engine</h2>
+      <p>All three options compose the same core: <a href="/library/api/"><code>pilcrow-typeset</code></a>, a small library that takes HTML and returns HTML with each paragraph broken into per-line spans. The adapters above are thin shims that pick up the conventions of their host framework and hand the body off to the same engine. If you are integrating into a build pipeline that is none of the above, the API reference is the place to start.</p>
+    </section>
+
+    <section class="library-credit">
+      <h2>Credit</h2>
+      <p>The line-breaking primitive is <a href="https://github.com/chenglou/pretext">pretext</a> by <a href="https://github.com/chenglou">Cheng Lou</a>. Pretext is a multilingual text-measurement library that decouples layout from the DOM; it is the load-bearing wall under everything Pilcrow ships. The editorial layer above it (drop caps, sidenote-aware spans, en-gb hyphenation, the orphan guard) is Pilcrow's contribution. Most of the credit for what you see on the page belongs upstream.</p>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .library {
+    max-width: 65ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .library-header {
+    margin-bottom: 2.5rem;
+  }
+
+  .lede-note {
+    color: var(--muted);
+    margin: 0.5rem 0 0;
+  }
+
+  .library-options .option {
+    margin: 2.5rem 0;
+  }
+
+  .library-options h2,
+  .library-api h2,
+  .library-credit h2 {
+    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+  }
+
+  .library-options h2 a {
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .library-options h2 a:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+  }
+
+  .library-api,
+  .library-credit {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+  }
+
+  .library p {
+    margin: 0 0 1rem;
+  }
+
+  .library code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.9em;
+  }
+</style>

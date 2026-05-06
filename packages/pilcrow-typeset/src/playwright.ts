@@ -31,7 +31,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { TypesetOptions, TypesetRenderer } from './index.js';
+import type { TypesetOptions, TypesetRenderer } from './renderer.js';
 import { hyphenateHTML } from './hyphenate.js';
 
 // ─── Read global.css once at module load ─────────────────────────────────────
@@ -70,12 +70,12 @@ function extractCSSProp(css: string, selector: string, prop: string): string | n
   const blockRe = new RegExp(`${escapedSelector}\\s*\\{([\\s\\S]+?)\\}`, 'g');
   let match: RegExpExecArray | null;
   while ((match = blockRe.exec(css)) !== null) {
-    const block = match[1];
+    const block = match[1]!;
     // Match the property inside the block.
     const propRe = new RegExp(`(?:^|;)\\s*${prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*([^;]+)`, 'm');
     const propMatch = propRe.exec(block);
     if (propMatch) {
-      return propMatch[1].trim();
+      return propMatch[1]!.trim();
     }
   }
   return null;
@@ -136,7 +136,7 @@ async function readMeasurementCSS(): Promise<{
 
   // Extract the full .lede .drop-cap rule block (properties only, not braces).
   const dropCapMatch = /\.lede\s+\.drop-cap\s*\{([^}]+)\}/s.exec(css);
-  const dropCapProps = dropCapMatch ? dropCapMatch[1].trim() : `
+  const dropCapProps = dropCapMatch ? dropCapMatch[1]!.trim() : `
     float: left;
     font-size: 4.6em;
     line-height: 0.85;
@@ -441,7 +441,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
 
             if (isCode) {
               // Use monospace family; strip quotes and use first family name for canvas
-              const monoFirst = MONO_FAMILY.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+              const monoFirst = MONO_FAMILY.split(',')[0]!.trim().replace(/^['"]|['"]$/g, '');
               fontFamily = `"${monoFirst}"`;
               // code font-size is 0.9em
               fontSize = Math.round(baseFontSize * 0.9);
@@ -464,7 +464,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
             // Build attrs record for this element
             const attrs: Record<string, string> = {};
             for (let i = 0; i < el.attributes.length; i++) {
-              const attr = el.attributes[i];
+              const attr = el.attributes[i]!;
               attrs[attr.name] = attr.value;
             }
 
@@ -496,8 +496,8 @@ export class PlaywrightRenderer implements TypesetRenderer {
         ): string {
           let html = '';
           for (let fi = 0; fi < fragments.length; fi++) {
-            const frag = fragments[fi];
-            const meta = itemMeta[frag.itemIndex];
+            const frag = fragments[fi]!;
+            const meta = itemMeta[frag.itemIndex]!;
             const tags = meta.tags;
             // Trim trailing whitespace from the last fragment of each line.
             // Pretext attaches a soft-break space to non-terminal fragments; strip it
@@ -509,7 +509,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
 
             // Wrap from innermost (last) to outermost (first)
             for (let i = tags.length - 1; i >= 0; i--) {
-              const { tag, attrs } = tags[i];
+              const { tag, attrs } = tags[i]!;
               const tagLower = tag.toLowerCase();
               let openTag = `<${tagLower}`;
               for (const [name, value] of Object.entries(attrs)) {
@@ -535,7 +535,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
          * strip outer quotes and return only the first family name, quoted if needed.
          */
         function normaliseFontFamily(family: string): string {
-          const first = family.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+          const first = family.split(',')[0]!.trim().replace(/^['"]|['"]$/g, '');
           return first.includes(' ') ? `"${first}"` : first;
         }
 
@@ -611,7 +611,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
           const plain = rawText(lineHTML).trimStart();
           const m = plain.match(/^(\S+)/);
           if (!m) return 0;
-          return m[1].replace(/[.,!?;:]+$/, '').length;
+          return m[1]!.replace(/[.,!?;:]+$/, '').length;
         }
 
         /**
@@ -636,8 +636,8 @@ export class PlaywrightRenderer implements TypesetRenderer {
          */
         function firstOrphanIdx(lineInners: string[]): number {
           for (let i = 0; i < lineInners.length - 1; i++) {
-            const t = rawText(lineInners[i]).trimEnd();
-            const nextLen = leadingWordLen(lineInners[i + 1]);
+            const t = rawText(lineInners[i]!).trimEnd();
+            const nextLen = leadingWordLen(lineInners[i + 1]!);
             if (nextLen <= 0) continue;
 
             // Case 1: clean break — line ends '-'
@@ -704,7 +704,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
          *   3. If neither found → source-text scan inconclusive, return -1 (doc-order fallback).
          */
         function findOrphanSHYPos(sourceText: string, lineInners: string[], orphanLine: number): number | null {
-          const lineN = rawText(lineInners[orphanLine]).trimEnd();
+          const lineN = rawText(lineInners[orphanLine]!).trimEnd();
           // Find the position of the last '-' in the line (the hyphen from the SHY break)
           const hyphenIdx = lineN.lastIndexOf('-');
           if (hyphenIdx < 0) return -1;
@@ -817,7 +817,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
             // Map flat position back to item + intra-item position
             let offset = 0;
             for (let ii = 0; ii < items.length; ii++) {
-              const len = items[ii].text.length;
+              const len = items[ii]!.text.length;
               if (shyPos < offset + len) {
                 return { itemIdx: ii, posInItem: shyPos - offset };
               }
@@ -854,7 +854,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
               // Targeted search failed — strip first SHY in document order.
               let stripped = false;
               for (let ii = 0; ii < workItems.length; ii++) {
-                const pos = workItems[ii].text.indexOf(SHY);
+                const pos = workItems[ii]!.text.indexOf(SHY);
                 if (pos >= 0) {
                   workItems = workItems.map((it, idx) =>
                     idx === ii ? { text: stripAt(it.text, pos), font: it.font } : it,
@@ -963,7 +963,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
               // No letter at all — skip the cap, warn, proceed to normal layout.
               warnings.push(`${postPath}: lede has no Unicode letter — drop cap skipped`);
             } else {
-              const firstChar = text[0]; // always take text[0] per Decision 2
+              const firstChar = text[0]!; // always take text[0] per Decision 2
               const firstLetterChar = firstLetterMatch[0];
               const firstLetterIndex = text.indexOf(firstLetterChar);
 
@@ -1043,7 +1043,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
 
                   if (freshItems.length > 0) {
                     // Strip the cap character from the front of the first item.
-                    const first = freshItems[0];
+                    const first = freshItems[0]!;
                     const stripped = first.text.slice(capChar.length);
                     if (stripped.length > 0) {
                       strippedItems = [{ text: stripped, font: first.font }, ...freshItems.slice(1)];

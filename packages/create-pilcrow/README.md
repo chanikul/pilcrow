@@ -2,6 +2,8 @@
 
 *The scaffolder for [Pilcrow](https://pilcrow.page) — a static blog generator that typesets your posts at build time. Markdown in, typeset HTML out. Zero JavaScript at the reader.*
 
+> Already have a blog? Drop Pilcrow into it instead: [pilcrow.page/library](https://pilcrow.page/library/)
+
 ## Quick start
 
 ```sh

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>
+    :root { --paper: #f6f5f2; --ink: #1a1a1a; --muted: #777; --rule: #ccc; --accent: #b85e1c; }
+    body { background: var(--paper); color: var(--ink); font-family: ui-serif, Georgia, serif; }
+    .post-body { --prose-measure: 65ch; max-width: 65ch; margin: 4rem auto; padding: 0 1.5rem; font-size: 18px; line-height: 1.6; }
+    .post-body p { margin: 0 0 1.8rem; }
+    .pt-line { display: block; }
+  </style>
+</head>
+<body>
+  <article>
+    <h1>{{ title }}</h1>
+    <div class="post-body">
+      {{ content | safe }}
+    </div>
+  </article>
+</body>
+</html>

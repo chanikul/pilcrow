@@ -1,0 +1,73 @@
+{
+  "name": "pilcrow-typeset",
+  "version": "0.1.0",
+  "description": "Build-time editorial typesetting for the open web — measure each paragraph, compute line breaks, drop caps, sidenotes, hyphenation. Built on @chenglou/pretext.",
+  "keywords": [
+    "pilcrow",
+    "typography",
+    "typesetting",
+    "pretext",
+    "drop-cap",
+    "sidenote",
+    "hyphenation",
+    "build-time"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./plugins/remark-pullquote": {
+      "types": "./dist/plugins/remark-pullquote.d.ts",
+      "import": "./dist/plugins/remark-pullquote.js"
+    },
+    "./plugins/remark-sidenote": {
+      "types": "./dist/plugins/remark-sidenote.d.ts",
+      "import": "./dist/plugins/remark-sidenote.js"
+    },
+    "./plugins/rehype-footnote-mark": {
+      "types": "./dist/plugins/rehype-footnote-mark.d.ts",
+      "import": "./dist/plugins/rehype-footnote-mark.js"
+    },
+    "./plugins/rehype-hoist-sidenotes": {
+      "types": "./dist/plugins/rehype-hoist-sidenotes.d.ts",
+      "import": "./dist/plugins/rehype-hoist-sidenotes.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "patterns/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bunx tsc -p tsconfig.json",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.6",
+    "hyphenopoly": "^6.1.0",
+    "mdast-util-directive": "^3.0.0",
+    "mdast-util-from-markdown": "^2.0.0",
+    "playwright": "^1.40.0",
+    "unist-util-visit": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2"
+  },
+  "peerDependencies": {
+    "playwright": "^1.40.0"
+  },
+  "engines": {
+    "node": ">=18.17.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanikul/pilcrow.git",
+    "directory": "packages/pilcrow-typeset"
+  },
+  "homepage": "https://pilcrow.page"
+}
