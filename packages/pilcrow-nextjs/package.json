@@ -37,6 +37,7 @@
   "dependencies": {
     "hast-util-from-html": "^2.0.0",
     "hast-util-to-html": "^9.0.0",
+    "pilcrow-typeset": "file:../pilcrow-typeset",
     "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
@@ -61,5 +62,5 @@
     "url": "https://github.com/chanikul/pilcrow.git",
     "directory": "packages/pilcrow-nextjs"
   },
-  "homepage": "https://pilcrow.page/library"
+  "homepage": "https://pilcrow.page"
 }

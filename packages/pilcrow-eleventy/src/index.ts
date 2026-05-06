@@ -16,7 +16,7 @@
  * See README for confirmed CI environments.
  */
 
-import { PlaywrightRenderer, type TypesetOptions } from '../../pilcrow-typeset/dist/index.js';
+import { PlaywrightRenderer, type TypesetOptions } from 'pilcrow-typeset';
 
 const POST_BODY_OPEN = '<div class="post-body">';
 

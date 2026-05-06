@@ -29,6 +29,9 @@
     "build": "tsc -p tsconfig.json",
     "prepublishOnly": "bun run build"
   },
+  "dependencies": {
+    "pilcrow-typeset": "file:../pilcrow-typeset"
+  },
   "peerDependencies": {
     "@11ty/eleventy": "^3.0.0",
     "playwright": "^1.40.0"

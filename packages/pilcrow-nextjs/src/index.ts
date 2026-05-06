@@ -27,8 +27,7 @@
 import { toHtml } from 'hast-util-to-html';
 import { fromHtml } from 'hast-util-from-html';
 import { visit } from 'unist-util-visit';
-import { PlaywrightRenderer } from '../../pilcrow-typeset/dist/index.js';
-import type { TypesetOptions } from '../../pilcrow-typeset/dist/index.js';
+import { PlaywrightRenderer, type TypesetOptions } from 'pilcrow-typeset';
 import type { Root, RootContent } from 'hast';
 
 /**
