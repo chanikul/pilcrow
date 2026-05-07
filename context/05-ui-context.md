@@ -40,6 +40,27 @@ These five tokens cover the entire surface area. Adding a sixth token requires e
 - **Pull quotes:** 1.5× body, Fraunces italic 400, line-height 1.4, 50ch measure
 - **Sidenote captions:** small-caps for cite, 0.85×, MUTED
 
+### Playground typographic universe
+
+The playground at `/playground/` ships a curated six-font shortlist that
+defines the universe of body-type options Pilcrow officially supports as
+"editorial-appropriate." Adding a font here is a taste call — surface to
+the human, don't decide.
+
+| Family          | Voice                              | Drop-cap weight | Source repo |
+|-----------------|------------------------------------|-----------------|-------------|
+| Fraunces        | display-as-body                    | 600             | self-hosted (canonical site face) |
+| Newsreader      | body-tuned-modern                  | 500             | productiontype/Newsreader (16pt opsz) |
+| Source Serif 4  | transitional                       | 600             | adobe-fonts/source-serif (no Medium 500 in static release) |
+| EB Garamond     | old-style                          | 500             | octaviopardo/EBGaramond12 (NOT google/fonts — variable only there) |
+| Inter           | neutral-sans                       | 500             | rsms/inter v4.1 release zip (extras/ttf/) |
+| Spectral        | contemporary-with-character        | 500             | google/fonts |
+
+Constraints: open-licensed, ships static instances (variable TTFs forbidden
+after the Linux Playwright Chromium 147 silent-fail — see learnings
+2026-05-06), real italics, ships either weight 500 or 600 (drop-cap requires
+one of those). All six self-hosted under `public/fonts/`.
+
 ## Measure
 
 - **Prose:** `--prose-measure: 65ch`. The single source of truth — referenced from `playwright.ts`'s `readMeasurementCSS()` (hard error if absent).

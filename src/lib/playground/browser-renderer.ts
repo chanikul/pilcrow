@@ -508,7 +508,12 @@ export class BrowserRenderer implements TypesetRenderer {
     //   1. SHY-injection (here)
     //   2. pretext.prepareWithSegments (below)
     //   3. pretext.layoutWithLines (below)
-    const bodyHTML = await hyphenateInBrowser(html);
+    // Skip the pre-pass when `options.hyphenation === false` (playground
+    // hyphenation-off toggle, sub-task 6). When skipped, lines break on
+    // word boundaries only — pretext sees no U+00AD candidates.
+    const bodyHTML = options.hyphenation === false
+      ? html
+      : await hyphenateInBrowser(html);
 
     // Mount the body in a hidden, off-screen `.post-body` so we can run the
     // same getComputedStyle / getBoundingClientRect probes the production

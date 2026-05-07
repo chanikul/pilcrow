@@ -49,6 +49,184 @@
   font-display: swap;
 }
 
+/* ─── Playground six-font shortlist (sub-task 6) ─────────────────────────────
+ * Five additional self-hosted families — static TTFs only, mirroring the
+ * Fraunces approach above. Variable TTFs are forbidden in this codebase
+ * after the Linux Playwright Chromium 147 silent-fail (see learnings 2026-05-06).
+ *
+ * These families are LAZY-LOADED. Only Fraunces is requested on first paint
+ * (`body { font-family: "Fraunces" … }`). The playground's Settings.astro
+ * fetches a family's faces via `document.fonts.load('400 19px <Family>')`
+ * the first time the user picks that family, so the playground's initial
+ * load stays at the Fraunces-only ~389 KB budget.
+ *
+ * Family-name strings here MUST exactly match the picker labels emitted by
+ * Settings.astro. Multi-word names need quoting both in `font-family` here
+ * and at every consumer site (BrowserRenderer's font shorthand string,
+ * Preview's CSS).
+ *
+ * Drop-cap weight policy (per Settings.astro's FONT_CONFIG):
+ *   Fraunces:        600 (SemiBold; static release has no Medium 500)
+ *   Newsreader:      500 (16pt opsz Medium)
+ *   Source Serif 4:  600 (Semibold; static release has no Medium 500)
+ *   EB Garamond:     500 (Medium)
+ *   Inter:           500 (Medium — sans-serif drop cap, but qualifies)
+ *   Spectral:        500 (Medium)
+ *
+ * Provenance: see commit message for source URLs + SHA256s for all 20 TTFs. */
+
+/* Newsreader — 16pt opsz static instances (productiontype/Newsreader). */
+@font-face {
+  font-family: "Newsreader";
+  src: url("/fonts/Newsreader16pt-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("/fonts/Newsreader16pt-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("/fonts/Newsreader16pt-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Newsreader";
+  src: url("/fonts/Newsreader16pt-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Source Serif 4 — Adobe (adobe-fonts/source-serif). No Medium 500 in
+ * the static release; drop-cap weight is 600 (Semibold). */
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/fonts/SourceSerif4-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/fonts/SourceSerif4-Semibold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/fonts/SourceSerif4-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("/fonts/SourceSerif4-It.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* EB Garamond — Octavio Pardo (octaviopardo/EBGaramond12). Wide Latin/Greek/
+ * Cyrillic glyph coverage; faces are larger (~600–690 KB each). */
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("/fonts/EBGaramond-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Inter — Rasmus Andersson (rsms/inter v4.1, extras/ttf statics). */
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Spectral — Production Type via google/fonts. */
+@font-face {
+  font-family: "Spectral";
+  src: url("/fonts/Spectral-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spectral";
+  src: url("/fonts/Spectral-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spectral";
+  src: url("/fonts/Spectral-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Spectral";
+  src: url("/fonts/Spectral-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
 /* ─── Palette tokens ─────────────────────────────────────────────────────── */
 :root {
   --paper: #fafaf7;

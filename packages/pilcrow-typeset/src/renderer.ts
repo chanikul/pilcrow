@@ -24,6 +24,16 @@ export interface TypesetOptions {
    * Absent or true = on (default); false = opt-out (front-matter `dropCap: false`).
    */
   dropCap?: boolean;
+  /**
+   * Whether to run the Hyphenopoly soft-hyphen pre-pass before pretext.
+   * Absent or true = on (default — matches build-time semantics for
+   * `pilcrow.page` and shipped adapter packages); false = skip the pre-pass
+   * entirely so line breaks fall on word boundaries only. Wired for the
+   * playground's hyphenation toggle (sub-task 6 of PILCROW_PLAYGROUND_PLAN.md);
+   * adapter packages (PlaywrightRenderer / pilcrow-eleventy / pilcrow-nextjs)
+   * leave this absent and continue to hyphenate by default.
+   */
+  hyphenation?: boolean;
 }
 
 /**

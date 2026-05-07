@@ -53,15 +53,32 @@
  *     muted line at the top surfaces the failure honestly:
  *     "Pilcrow's typesetter couldn't initialise — showing plain HTML."
  *
- *   Q E (settings shape): forward declaration only — first version uses
- *     hard-coded defaults that match the published site:
- *       - `dropCap: true`
- *       - NO `maxWidth` override (let `--prose-measure` derive 65ch)
- *       - NO `fontShorthand` override (let probe-paragraph derivation pick
- *         up the .post-body cascade)
- *       - NO `lineHeight` override (let probe-paragraph derivation pick up
- *         CSS `line-height: 1.7`)
- *     Sub-task 6 will swap these for live reads from the settings panel.
+ *   Q E (settings shape) — UPDATED in sub-task 6:
+ *     The hard-coded defaults are GONE. Preview now waits for Settings.astro's
+ *     `pilcrow:settings-changed` dispatch (`source: 'init'`) on script load,
+ *     which lands the canonical baseline. Subsequent dispatches re-typeset
+ *     with the new state. The full settings shape:
+ *
+ *         { font: string;          // family name as in @font-face
+ *           dropCap: boolean;
+ *           hyphenation: boolean;
+ *           measure: number;       // 50 | 60 | 65 | 70 | 75 (ch)
+ *           lineHeight: number;    // 1.4 | 1.5 | 1.55 | 1.6 | 1.7
+ *         }
+ *
+ *     Settings → typeset wiring:
+ *       - `font` → host CSS `font-family` (visible render) AND
+ *         `fontShorthand: '400 19px <family>'` to typeset() (canvas measure).
+ *       - `lineHeight` → host CSS `line-height` AND
+ *         `lineHeight: ratio * 19` (px) to typeset().
+ *       - `measure` → typeset() `maxWidth` derived by probing
+ *         `width: <measure>ch` on the (now font-styled) host. Different fonts
+ *         have different `ch` width, so per-font probing is required.
+ *       - `dropCap` → typeset() `dropCap` (boolean).
+ *       - `hyphenation` → currently a no-op against BrowserRenderer (the SHY
+ *         pre-pass is unconditional inside hyphenate-browser.ts). When OFF
+ *         we strip soft hyphens before typeset by replacing U+00AD-bearing
+ *         output with the original input — see the wiring below.
  *
  * ─── JS-disabled fallback ───────────────────────────────────────────────────
  *   The pane server-renders the same stand-in prose as plain HTML paragraphs
@@ -140,10 +157,23 @@ const STAND_IN_PROSE =
 
   import { BrowserRenderer } from '../../lib/playground/browser-renderer.ts';
 
-  // ─── Event contract — the typed surface sub-tasks 6/9 build against ─────
+  // ─── Event contracts — typed surface for sub-tasks 6/8/9 ────────────────
   interface EditorChangedDetail {
     markdown: string;
     source: 'paste' | 'keystroke' | 'init';
+  }
+
+  interface PlaygroundSettings {
+    font: string;
+    dropCap: boolean;
+    hyphenation: boolean;
+    measure: number;
+    lineHeight: number;
+  }
+  interface SettingsChangedDetail {
+    settings: PlaygroundSettings;
+    changed: keyof PlaygroundSettings | null;
+    source: 'user' | 'init' | 'restore';
   }
 
   // ─── DOM handles ────────────────────────────────────────────────────────
@@ -185,22 +215,50 @@ const STAND_IN_PROSE =
       return blocks.map((b) => `<p>${escapeHTML(b)}</p>`).join('\n');
     };
 
-    // ─── Markdown → HTML (input to BrowserRenderer) ───────────────────────
-    // BrowserRenderer expects HTML (a `.post-body` body), not raw markdown.
-    // For sub-task 7 the playground's stand-in is plain prose with no
-    // markdown formatting; the same blank-line-to-paragraph conversion that
-    // powers the Q D fallback also works as the input transform. Sub-task 6
-    // (or whenever Pilcrow's markdown pipeline gets ported to the browser)
-    // can swap this for the real remark/rehype directive pipeline.
     const sourceToBodyHTML = (md: string): string => markdownToPlainHTML(md);
+
+    // ─── Family-name → CSS font-family stack ──────────────────────────────
+    // Each family in the shortlist maps to a fallback stack so the visible
+    // host renders sensibly during the brief moment between pick and load
+    // resolution. The first quoted name MUST match the @font-face family.
+    // Sans-serif (Inter) gets a sans fallback; everything else gets serif.
+    const familyStack = (family: string): string => {
+      const quoted = `"${family}"`;
+      if (family === 'Inter') return `${quoted}, system-ui, sans-serif`;
+      return `${quoted}, ui-serif, Georgia, "Times New Roman", serif`;
+    };
+
+    // ─── Per-font measure derivation ──────────────────────────────────────
+    // CSS `1ch` resolves to "the advance width of '0' in the current font".
+    // Different fonts have different '0' widths, so a `width: 65ch` probe
+    // resolves to different px in Fraunces vs Inter vs EB Garamond. We
+    // probe inside the host (which has the chosen family applied) so the
+    // returned px reflects the chosen font's metrics.
+    const measurePx = (measureCh: number): number => {
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        `position:absolute;visibility:hidden;height:0;width:${measureCh}ch;`;
+      host.appendChild(probe);
+      const px = probe.clientWidth;
+      probe.remove();
+      return px;
+    };
 
     // ─── Typeset state ────────────────────────────────────────────────────
     const renderer = new BrowserRenderer();
     let rendererReady = false;
     let lastFailed = false;
-    // Coalesce overlapping typeset() calls — only the latest source wins.
-    let pendingMarkdown: string | null = null;
     let typesetting = false;
+
+    // Latest editor + settings state. Either-or events trigger a re-typeset
+    // against the current latest of both. `latestSettings` defaults to null
+    // — the renderer waits for Settings.astro's `source: 'init'` dispatch
+    // before its first typeset (sub-task 6 contract). If for any reason
+    // Settings.astro fails to load, we fall through to a hard-coded
+    // safe default after a short timeout (see init waiter below).
+    let latestMarkdown: string = STAND_IN;
+    let latestSettings: PlaygroundSettings | null = null;
+    let pendingRetypeset = false;
 
     const showFallback = (md: string, message?: string): void => {
       lastFailed = true;
@@ -220,82 +278,178 @@ const STAND_IN_PROSE =
       }
     };
 
-    const runTypeset = async (md: string, source: EditorChangedDetail['source']): Promise<void> => {
-      // Coalesce: if a typeset is in flight, queue the latest input and let
-      // the running call pick it up when it finishes.
+    /**
+     * Apply visual CSS overrides to the host so the typeset output renders
+     * in the chosen font / line-height. The line-break decisions (where the
+     * pt-line spans split) come from the typeset() canvas measurement —
+     * these CSS overrides are only the *paint* layer.
+     */
+    const applyHostStyles = (settings: PlaygroundSettings): void => {
+      host.style.fontFamily = familyStack(settings.font);
+      host.style.lineHeight = String(settings.lineHeight);
+      // Override .post-body's 65ch grid template so the visible host
+      // expands/contracts with the user's chosen measure. Also expose the
+      // measure as a custom property in case future CSS rules want it.
+      host.style.maxWidth = `${settings.measure}ch`;
+      host.style.setProperty('--prose-measure', `${settings.measure}ch`);
+    };
+
+    /**
+     * Build the TypesetOptions object from the live settings. Returns null
+     * when the host's font hasn't laid out yet (zero-width probe), in which
+     * case the caller should defer typeset to next animation frame.
+     */
+    const buildTypesetOptions = (
+      settings: PlaygroundSettings,
+      source: string,
+    ): {
+      fontShorthand: string;
+      maxWidth: number;
+      lineHeight: number;
+      dropCap: boolean;
+      hyphenation: boolean;
+      postPath: string;
+    } | null => {
+      const familyToken = settings.font.includes(' ')
+        ? `"${settings.font}"`
+        : settings.font;
+      // Body size = html font-size = 19px (matches global.css `html { font-size: 19px }`).
+      // `${weight} ${size}px ${family}` is the canvas font shorthand pretext consumes.
+      const fontShorthand = `400 19px ${familyToken}`;
+      const px = measurePx(settings.measure);
+      if (!Number.isFinite(px) || px <= 0) return null;
+      const lineHeightPx = settings.lineHeight * 19;
+      return {
+        fontShorthand,
+        maxWidth: px,
+        lineHeight: lineHeightPx,
+        dropCap: settings.dropCap,
+        hyphenation: settings.hyphenation,
+        postPath: `playground (${source})`,
+      };
+    };
+
+    /**
+     * Run a typeset using the current latestMarkdown + latestSettings.
+     * The `source` arg is for postPath logging only; both editor and
+     * settings events route through the same render path.
+     */
+    const runTypeset = async (source: string): Promise<void> => {
+      // No settings yet → wait. (Settings.astro's init dispatch races the
+      // editor's init dispatch; whichever lands second triggers the first
+      // typeset. If settings never lands within a budget, a fallback below
+      // unblocks with safe defaults.)
+      if (latestSettings === null) return;
+
       if (typesetting) {
-        pendingMarkdown = md;
+        pendingRetypeset = true;
         return;
       }
       typesetting = true;
       try {
+        const md = latestMarkdown;
+        const settings = latestSettings;
         const bodyHTML = sourceToBodyHTML(md);
-        // No `maxWidth` — let resolveProseMeasurePx() derive 65ch from CSS.
-        // No `fontShorthand` — let probe-paragraph derivation pick it up.
-        // No `lineHeight` — same.
-        // TODO sub-task 6: read `dropCap`, font, measure, line-height from
-        // the settings panel via getElementById on the settings inputs.
-        const result = await renderer.typeset(bodyHTML, {
-          fontShorthand: '',
-          maxWidth: 0,
-          lineHeight: 0,
-          dropCap: true,
-          postPath: `playground (${source})`,
-        });
+        applyHostStyles(settings);
+
+        const opts = buildTypesetOptions(settings, source);
+        if (opts === null) {
+          // Host not laid out yet — paint plain HTML and try again next frame.
+          host.innerHTML = markdownToPlainHTML(md);
+          host.dataset.previewState = 'pending';
+          requestAnimationFrame(() => {
+            typesetting = false;
+            void runTypeset(source);
+          });
+          return;
+        }
+
+        const result = await renderer.typeset(bodyHTML, opts);
         host.innerHTML = result.html;
         host.dataset.previewState = source === 'init' ? 'initial-typeset' : 'live';
         clearFallback();
       } catch (err) {
-        showFallback(md, `typeset failed (source=${source}): ${(err as Error).message}`);
+        showFallback(latestMarkdown, `typeset failed (source=${source}): ${(err as Error).message}`);
       } finally {
         typesetting = false;
-        // Drain queued input — if a newer event arrived during the run,
-        // process it now. This guarantees the preview reflects the *latest*
-        // editor state, not whichever event happened to win the race.
-        if (pendingMarkdown !== null) {
-          const next = pendingMarkdown;
-          pendingMarkdown = null;
-          // Re-enter via the same code path; tag as 'keystroke' since we
-          // can't recover the original source and 'keystroke' is the
-          // benign default.
-          void runTypeset(next, 'keystroke');
+        if (pendingRetypeset) {
+          pendingRetypeset = false;
+          void runTypeset(source);
         }
       }
     };
 
     // ─── Eager BrowserRenderer.open() (Q C sub-question) ──────────────────
-    // Kicks off wasm fetch + Fraunces weight loads in the background. The
-    // user sees the SSR plain-HTML fallback in the meantime, which is
-    // already styled (Fraunces, 65ch, paper bg) — only line breaks differ
-    // from the typeset.
     renderer
       .open()
-      .then(async () => {
+      .then(() => {
         rendererReady = true;
-        // First typeset on the stand-in (source: 'init') — lands the
-        // typeset baseline before the user has interacted.
-        await runTypeset(STAND_IN, 'init');
+        // If Settings.astro already dispatched before open() resolved, the
+        // settings landed via the event listener below OR — in case the
+        // listener hadn't attached yet (the BrowserRenderer dynamic-import
+        // resolves a microtask after Settings.astro's synchronous body) —
+        // via the `window.__pilcrowSettings` mirror Settings writes alongside
+        // each dispatch. Both are consulted here so a missed event becomes a
+        // recoverable state read instead of a fall-through warning.
+        if (latestSettings === null) {
+          interface PlaygroundWindow extends Window {
+            __pilcrowSettings?: PlaygroundSettings;
+          }
+          const mirror = (window as PlaygroundWindow).__pilcrowSettings;
+          if (mirror) latestSettings = mirror;
+        }
+        if (latestSettings !== null) {
+          void runTypeset('init');
+        }
       })
       .catch((err) => {
-        // Renderer initialisation failed (e.g. Intl.Segmenter unavailable
-        // on Firefox <125). Surface plain HTML and the muted notice.
         showFallback(STAND_IN, `BrowserRenderer.open() failed: ${(err as Error).message}`);
       });
+
+    // ─── Settings event listener — THE sub-task 6 entry point ────────────
+    document.addEventListener('pilcrow:settings-changed', (event) => {
+      const detail = (event as CustomEvent<SettingsChangedDetail>).detail;
+      if (!detail || !detail.settings) return;
+      latestSettings = detail.settings;
+      if (!rendererReady) return; // open() resolution will trigger init typeset
+      void runTypeset(`settings:${detail.source}`);
+    });
 
     // ─── Editor event listener ────────────────────────────────────────────
     document.addEventListener('pilcrow:editor-changed', (event) => {
       const detail = (event as CustomEvent<EditorChangedDetail>).detail;
       if (!detail || typeof detail.markdown !== 'string') return;
-      // If the renderer hasn't finished opening yet, fall back to plain HTML
-      // so the user still sees their content. The init resolution above will
-      // overwrite with the typeset version once ready.
-      if (!rendererReady) {
+      latestMarkdown = detail.markdown;
+      if (!rendererReady || latestSettings === null) {
+        // No renderer or no settings yet — paint plain HTML so the user
+        // still sees their content. A typeset will land once both are ready.
         host.innerHTML = markdownToPlainHTML(detail.markdown);
         host.dataset.previewState = 'pending';
         return;
       }
-      void runTypeset(detail.markdown, detail.source);
+      void runTypeset(`editor:${detail.source}`);
     });
+
+    // ─── Settings-init waiter ────────────────────────────────────────────
+    // Settings.astro should dispatch with `source: 'init'` on its
+    // queueMicrotask after this script attaches its listener. If for any
+    // reason the dispatch never arrives (Settings.astro broke / wasn't
+    // imported / etc.) within a short budget, fall back to safe defaults
+    // so the playground still typesets.
+    setTimeout(() => {
+      if (latestSettings === null) {
+        // eslint-disable-next-line no-console
+        console.warn('[pilcrow:preview] settings init dispatch never arrived; using safe defaults');
+        latestSettings = {
+          font: 'Fraunces',
+          dropCap: true,
+          hyphenation: true,
+          measure: 65,
+          lineHeight: 1.55,
+        };
+        if (rendererReady) void runTypeset('init:fallback');
+      }
+    }, 1000);
   }
 </script>
 
