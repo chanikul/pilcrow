@@ -222,6 +222,25 @@ const DEFAULT_LINE_HEIGHT = 1.55;
         ))}
       </div>
     </fieldset>
+
+    {/* ─── Copy-HTML action (sub-task 8) ──────────────────────────────────
+        Tool affordance, not a CTA. Inter chrome register; subdued border
+        like the stepper / swatch surfaces. Click reads the live preview
+        host, wraps it in a self-contained HTML document with inlined
+        font-face for the current font, and writes to clipboard. Pure
+        button — JS-disabled fallback is a visible no-op (layout stable). */}
+    <div class="settings-control settings-control-action">
+      <span class="settings-legend" id="copy-html-legend">Output</span>
+      <button
+        type="button"
+        class="copy-html-button"
+        data-copy-html
+        aria-labelledby="copy-html-legend"
+        aria-live="polite"
+      >
+        <span data-copy-html-label>Copy HTML</span>
+      </button>
+    </div>
   </div>
 </form>
 
@@ -499,6 +518,225 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       updateDropCapAvailability(initial.font);
       dispatch(null, 'init');
     }, 0);
+
+    // ─── Copy-HTML action (sub-task 8) ──────────────────────────────────
+    // Reads the live preview host (`#playground-preview-host`), wraps it
+    // in a self-contained HTML document containing:
+    //   - @font-face declarations for the currently selected font (URL-
+    //     referenced against pilcrow.page; sub-question b3 default)
+    //   - the small set of measurement-critical rules from global.css
+    //     (`html` font-size, body font-family, .post-body, .pt-line,
+    //     .lede .drop-cap, .visually-hidden) — only the rules the typeset
+    //     output actually uses, NOT the full editorial stylesheet
+    //   - an HTML comment about font origin
+    // Self-contained: paste the clipboard into any HTML file and the
+    // typeset output renders with fonts loaded from pilcrow.page.
+    //
+    // Limitations (acknowledged for v0): styles for sidenotes, footnotes,
+    // pull quotes are not included. If the user's pasted markdown uses
+    // those primitives, those parts will render unstyled in the copied
+    // output. This is the simplest correct thing to ship first.
+    const copyButton = document.querySelector<HTMLButtonElement>(
+      '[data-copy-html]',
+    );
+    const copyLabel = document.querySelector<HTMLSpanElement>(
+      '[data-copy-html-label]',
+    );
+
+    /**
+     * Per-family @font-face block keyed against the lazy-load list. Keeps
+     * each family's four faces in sync with the source-of-truth in
+     * global.css. Drop-cap weight tracks the swatch's data-drop-cap-weight.
+     * URL paths are absolute against pilcrow.page (b3 — fonts referenced,
+     * not inlined; ~5 KB payload vs ~1.5 MB if we base64-inlined).
+     */
+    interface FontFaceSpec {
+      readonly file: string;
+      readonly weight: number;
+      readonly style: 'normal' | 'italic';
+    }
+    const FONT_FACES: Record<string, readonly FontFaceSpec[]> = {
+      'Fraunces': [
+        { file: 'Fraunces144pt-Regular.ttf',  weight: 400, style: 'normal' },
+        { file: 'Fraunces144pt-SemiBold.ttf', weight: 600, style: 'normal' },
+        { file: 'Fraunces144pt-Bold.ttf',     weight: 700, style: 'normal' },
+        { file: 'Fraunces144pt-Italic.ttf',   weight: 400, style: 'italic' },
+      ],
+      'Newsreader': [
+        { file: 'Newsreader16pt-Regular.ttf', weight: 400, style: 'normal' },
+        { file: 'Newsreader16pt-Medium.ttf',  weight: 500, style: 'normal' },
+        { file: 'Newsreader16pt-Bold.ttf',    weight: 700, style: 'normal' },
+        { file: 'Newsreader16pt-Italic.ttf',  weight: 400, style: 'italic' },
+      ],
+      'Source Serif 4': [
+        { file: 'SourceSerif4-Regular.ttf',  weight: 400, style: 'normal' },
+        { file: 'SourceSerif4-Semibold.ttf', weight: 600, style: 'normal' },
+        { file: 'SourceSerif4-Bold.ttf',     weight: 700, style: 'normal' },
+        { file: 'SourceSerif4-It.ttf',       weight: 400, style: 'italic' },
+      ],
+      'EB Garamond': [
+        { file: 'EBGaramond-Regular.ttf', weight: 400, style: 'normal' },
+        { file: 'EBGaramond-Medium.ttf',  weight: 500, style: 'normal' },
+        { file: 'EBGaramond-Bold.ttf',    weight: 700, style: 'normal' },
+        { file: 'EBGaramond-Italic.ttf',  weight: 400, style: 'italic' },
+      ],
+      'Inter': [
+        { file: 'Inter-Regular.ttf', weight: 400, style: 'normal' },
+        { file: 'Inter-Medium.ttf',  weight: 500, style: 'normal' },
+        { file: 'Inter-Bold.ttf',    weight: 700, style: 'normal' },
+        { file: 'Inter-Italic.ttf',  weight: 400, style: 'italic' },
+      ],
+      'Spectral': [
+        { file: 'Spectral-Regular.ttf', weight: 400, style: 'normal' },
+        { file: 'Spectral-Medium.ttf',  weight: 500, style: 'normal' },
+        { file: 'Spectral-Bold.ttf',    weight: 700, style: 'normal' },
+        { file: 'Spectral-Italic.ttf',  weight: 400, style: 'italic' },
+      ],
+    };
+    const FONT_ORIGIN = 'https://pilcrow.page/fonts';
+
+    /**
+     * Build the inlined CSS block for the chosen font + measurement
+     * settings. Only includes rules the typeset output actually uses.
+     */
+    const buildInlinedCSS = (settings: PlaygroundSettings): string => {
+      const faces = FONT_FACES[settings.font] ?? FONT_FACES['Fraunces'] ?? [];
+      const familyToken = settings.font.includes(' ')
+        ? `"${settings.font}"`
+        : `"${settings.font}"`;
+      const fallback = settings.font === 'Inter'
+        ? 'system-ui, sans-serif'
+        : 'ui-serif, Georgia, "Times New Roman", serif';
+      const fontStack = `${familyToken}, ${fallback}`;
+      const dropCapSwatch = swatches.find(
+        (s) => s.dataset.font === settings.font,
+      );
+      const dropCapWeight = dropCapSwatch?.dataset.dropCapWeight ?? '600';
+      const fontFaceBlocks = faces
+        .map(
+          (f) =>
+            `@font-face {\n` +
+            `  font-family: ${familyToken};\n` +
+            `  src: url("${FONT_ORIGIN}/${f.file}") format("truetype");\n` +
+            `  font-weight: ${f.weight};\n` +
+            `  font-style: ${f.style};\n` +
+            `  font-display: swap;\n` +
+            `}`,
+        )
+        .join('\n');
+      return [
+        fontFaceBlocks,
+        `html { font-size: 19px; }`,
+        `body {`,
+        `  font-family: ${fontStack};`,
+        `  line-height: ${settings.lineHeight};`,
+        `  color: #1a1a1a;`,
+        `  background: #fafaf7;`,
+        `  margin: 0;`,
+        `  padding: 4rem 1rem 2rem;`,
+        `}`,
+        `.post-body {`,
+        `  max-width: ${settings.measure}ch;`,
+        `  margin: 0 auto;`,
+        `}`,
+        `.post-body p { margin: 0 0 1.8rem; }`,
+        `.post-body p:empty { margin: 0; }`,
+        `.pt-line { display: block; }`,
+        `.lede .drop-cap {`,
+        `  float: left;`,
+        `  font-size: 4.6em;`,
+        `  line-height: 0.85;`,
+        `  font-weight: ${dropCapWeight};`,
+        `  padding: 0.05em 0.08em 0 0;`,
+        `  margin-top: 0.05em;`,
+        `}`,
+        `.lede + p { clear: left; }`,
+        `.visually-hidden {`,
+        `  position: absolute;`,
+        `  width: 1px;`,
+        `  height: 1px;`,
+        `  overflow: hidden;`,
+        `  clip: rect(0, 0, 0, 0);`,
+        `  white-space: nowrap;`,
+        `}`,
+      ].join('\n');
+    };
+
+    /**
+     * Compose the full self-contained HTML payload around the live preview
+     * host's innerHTML. Returns `null` if the preview host isn't present
+     * (defensive — Preview.astro always renders it, but a surgical edit
+     * could remove it).
+     */
+    const buildCopyableHTML = (): string | null => {
+      const host = document.getElementById('playground-preview-host');
+      if (!host) return null;
+      const settings: PlaygroundSettings =
+        (window as PlaygroundWindow).__pilcrowSettings ?? readSettings();
+      const css = buildInlinedCSS(settings);
+      const innerHTML = host.innerHTML;
+      return [
+        `<!DOCTYPE html>`,
+        `<!-- Typeset by Pilcrow (https://pilcrow.page/playground).`,
+        `     Fonts served from pilcrow.page; for a fully self-contained version,`,
+        `     download the .ttf files from https://pilcrow.page/fonts/ and`,
+        `     replace the @font-face src URLs below with relative paths. -->`,
+        `<html lang="en">`,
+        `<head>`,
+        `<meta charset="utf-8">`,
+        `<title>Pilcrow typeset</title>`,
+        `<style>`,
+        css,
+        `</style>`,
+        `</head>`,
+        `<body>`,
+        `<div class="post-body">`,
+        innerHTML,
+        `</div>`,
+        `</body>`,
+        `</html>`,
+      ].join('\n');
+    };
+
+    if (copyButton && copyLabel) {
+      const REVERT_MS = 1500;
+      let revertTimer: number | null = null;
+      const setLabel = (text: string): void => {
+        copyLabel.textContent = text;
+      };
+      const scheduleRevert = (): void => {
+        if (revertTimer !== null) window.clearTimeout(revertTimer);
+        revertTimer = window.setTimeout(() => {
+          setLabel('Copy HTML');
+          copyButton.removeAttribute('data-state');
+          revertTimer = null;
+        }, REVERT_MS);
+      };
+
+      copyButton.addEventListener('click', async () => {
+        const html = buildCopyableHTML();
+        if (html === null) {
+          setLabel('Nothing to copy');
+          copyButton.setAttribute('data-state', 'error');
+          scheduleRevert();
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(html);
+          setLabel('Copied!');
+          copyButton.setAttribute('data-state', 'success');
+          scheduleRevert();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[pilcrow:copy-html] clipboard write failed:', err);
+          // eslint-disable-next-line no-console
+          console.log('[pilcrow:copy-html] payload (manual grab):\n' + html);
+          setLabel('Copy failed — see console');
+          copyButton.setAttribute('data-state', 'error');
+          scheduleRevert();
+        }
+      });
+    }
   }
 </script>
 
@@ -604,12 +842,24 @@ const DEFAULT_LINE_HEIGHT = 1.55;
   }
 
   /* ─── Row 2 — controls ───────────────────────────────────────────────── */
+  /* Five cells: drop-cap, hyphenation, measure stepper, line-height stepper,
+     copy-HTML action. The action sits at the right edge so it reads as a
+     terminal control — the user has configured the typeset; the button is
+     the way out. */
   .settings-row-controls {
     display: grid;
     grid-template-columns:
-      auto auto 1fr 1fr;
+      auto auto auto auto 1fr;
     gap: 1.5rem;
     align-items: start;
+  }
+
+  /* The action cell pushes its button flush to the right edge so the chrome
+     ends with a clean trailing affordance rather than a left-aligned button
+     floating next to the line-height stepper. */
+  .settings-control-action {
+    justify-self: end;
+    text-align: right;
   }
 
   .settings-control {
@@ -704,6 +954,54 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     outline-offset: 2px;
   }
 
+  /* ─── Copy-HTML action ──────────────────────────────────────────────────
+     Tool affordance, NOT a CTA. Inter chrome register, ruled border like
+     the stepper / swatch surfaces, accent on hover. The label swap to
+     "Copied!" is the entire success feedback — no toast, no modal. */
+  .copy-html-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    /* Reset button defaults that drift visual register otherwise. */
+    line-height: 1.2;
+    transition: border-color 120ms ease, color 120ms ease;
+    /* Reserve enough width that the "Copied!" / "Copy failed" labels don't
+       cause the chrome row to reflow when the label swaps. */
+    min-width: 9rem;
+  }
+
+  .copy-html-button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .copy-html-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Success / error states — quiet, no colour change beyond the accent
+     border so the feedback doesn't shout. The label text carries the
+     signal; the border carries the confirmation. */
+  .copy-html-button[data-state='success'] {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .copy-html-button[data-state='error'] {
+    border-color: var(--ink);
+    color: var(--ink);
+  }
+
   /* ─── Mobile (<768px) — vertical stack, horizontal-scroll swatches ────── */
   @media (max-width: 767px) {
     .font-swatches {
@@ -733,6 +1031,18 @@ const DEFAULT_LINE_HEIGHT = 1.55;
 
     .stepper-option {
       flex: 1;
+    }
+
+    /* On mobile the action cell sits as its own row in the stack. Push the
+       button to span the full width so it reads as a deliberate trailing
+       control rather than a small right-floating button. */
+    .settings-control-action {
+      justify-self: stretch;
+      text-align: left;
+    }
+
+    .copy-html-button {
+      width: 100%;
     }
   }
 </style>
