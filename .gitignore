@@ -6,3 +6,11 @@ dist/
 public/_images/
 .DS_Store
 **/.DS_Store
+
+# Spec workflow scratchpads — never commit
+context/current-issues.md
+context/screenshots/
+
+# Per-package build artifacts
+packages/*/tsconfig.tsbuildinfo
+packages/*/dist/

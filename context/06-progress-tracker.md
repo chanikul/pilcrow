@@ -11,7 +11,7 @@
 **Phase:** v1 shipped → v3 sprint (engine extraction to packages/pilcrow-typeset/) in progress
 **Current goal:** Complete v3 sprint Deliverable A (engine extraction). Then return to first post-shipped feature spec.
 **Owner:** Chanikul
-**Updated:** 2026-05-06
+**Updated:** 2026-05-07
 
 ---
 
@@ -96,6 +96,14 @@ These are deferred items from `NOTES.md` and observations from `.claude/learning
 - `NOTES.md` and `.claude/learnings.md` left in place — referenced from the new context files.
 - `agents.md` and `context/feature-specs/` added; `context/current-issues.md` added (gitignored).
 - Next: write spec 01 for the first post-shipped feature.
+
+### 2026-05-07 — BrowserRenderer chapter + agent registration
+- **BrowserRenderer arc:** built the playground's client-side typesetting renderer that mirrors `playwright.ts` for the upcoming `/playground` page. Caught a Linux Playwright Chromium 147 bug where variable-axis TTF fonts silently fail to render despite `FontFace.status === 'loaded'`. Switched body type from variable Fraunces (803 KB) to four static 144pt instances (389 KB total): Regular 400, SemiBold 600, Bold 700, Italic 400. Drop-cap weight changed 500 → 600 (static release ships no Medium). Residual ~3% line-count drift on long posts vs CF Pages remains as a known FreeType-vs-CoreText rasterisation envelope. v1.x candidate filed: Linux build container for byte-identical typeset parity (see `NOTES.md`).
+- **Four learnings appended** to `.claude/learnings.md` (all dated 2026-05-06): BrowserRenderer arc, harness anti-pattern (diagnostic infra must reach canonical-Y by reference, never by reproduction), font-loading race for injected content (`document.fonts.ready` doesn't wait for unrequested weights), surface-reading bias (when probe matrix shows "identical CSS, different rect," look at lifecycle before structure).
+- **Four Claude Code subagents registered** at `.claude/agents/`: typesetter, typography-architect, design-critic, editorial-writer. Personas previously existed only in user's Claude project knowledge; now in repo as runtime registration surface for typed dispatch. Slash command wiring (`/typeset`, `/build-feature`, `/review`, `/draft`) deferred — currently dispatch via plain-language phrasing.
+- **`agents.md` merged** with canonical four-agent orchestration content. Single doc serves both non-Claude AI agents (Codex/Cursor/Aider entry-point) and Claude Code dispatch.
+- **Context migration committed.** The 6-file context system migration (started 6 May, files authored locally) finally landed in main alongside `CLAUDE.md.bak`, `agents.md`, `.gitignore` additions for `context/current-issues.md` + `context/screenshots/` + `packages/*/dist/`.
+- Next: Level 1 of the playground sprint — the page shell at `/playground/` (sub-tasks 4–10 of `PILCROW_PLAYGROUND_PLAN.md`).
 
 ### Older session notes
 For history before 2026-05-06, see `.claude/learnings.md` (append-only lessons) and the original `CLAUDE.md.bak` (the dense braindump).
