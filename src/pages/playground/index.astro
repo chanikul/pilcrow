@@ -30,6 +30,7 @@
 
 import Base from '../../layouts/Base.astro';
 import Editor from '../../components/playground/Editor.astro';
+import Preview from '../../components/playground/Preview.astro';
 ---
 
 <Base title="Pilcrow Playground" chrome="minimal">
@@ -101,22 +102,23 @@ import Editor from '../../components/playground/Editor.astro';
         <Editor />
       </section>
 
-      {/* Preview pane — sub-task 7. Renders BrowserRenderer output.
-          Editorial register: Fraunces, paper bg, generous margins.
-          DO NOT import src/lib/playground/browser-renderer.ts in this shell. */}
+      {/* Preview pane — sub-task 7 SHIPPED. The wrapper <section> keeps
+          its id, classes, data-placeholder, and aria-labelledby (the
+          Preview component renders the inner h2#playground-preview-label).
+          The .post-body host inside the Preview component carries the
+          editorial cascade (Fraunces, --prose-measure: 65ch, line-height
+          1.7) so the typeset output sits at its canonical 65ch measure
+          centred inside this wider pane.
+
+          Note: the `font-family: Fraunces` on the parent .playground-preview
+          remains as a paint-before-typeset hint for the SSR fallback. */}
       <section
         id="playground-preview"
         class="playground-preview"
         data-placeholder="preview-pane"
         aria-labelledby="playground-preview-label"
       >
-        <h2 id="playground-preview-label" class="placeholder-label">
-          Preview pane — sub-task 7
-        </h2>
-        <p class="placeholder-hint">
-          Live typeset output — BrowserRenderer wired in sub-task 7.
-        </p>
-        {/* TODO sub-task 7: PreviewPane component */}
+        <Preview />
       </section>
     </div>
   </main>

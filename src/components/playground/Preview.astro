@@ -1,0 +1,383 @@
+---
+/**
+ * Pilcrow Playground — Preview pane (sub-task 7 of PILCROW_PLAYGROUND_PLAN.md).
+ *
+ * Wires `BrowserRenderer` (from `src/lib/playground/browser-renderer.ts`) to
+ * the playground's right column. Listens for `pilcrow:editor-changed` events
+ * dispatched by Editor.astro, runs the markdown source through the typeset
+ * pipeline, and replaces the preview content with per-line `<span class="pt-line">`
+ * spans wrapped in a real `.post-body` host (so the production CSS — including
+ * `--prose-measure: 65ch` — applies natively).
+ *
+ * ─── Pinned design constraint (from sub-task 7 brief) ────────────────────────
+ *   The preview *pane* (this section) is the wide right column on desktop.
+ *   The typeset *output* renders at 65ch — Pilcrow's canonical measure, set
+ *   by `global.css` and produced naturally by BrowserRenderer.
+ *   The output sits **centred in the pane with generous surrounding margin**.
+ *   The pane is the frame; the typeset is the picture.
+ *
+ *   Implementation: don't pass a `maxWidth` override to BrowserRenderer.typeset()
+ *   — let it derive from `--prose-measure` via `resolveProseMeasurePx()`.
+ *   The pane wrapper provides the centred container + breathing margins.
+ *
+ * ─── Design Q&A resolutions (defaults applied; see sub-task 7 brief) ─────────
+ *   Q A (event contract): (b) — `pilcrow:editor-changed` CustomEvent on
+ *     `document`. Detail shape (THE CONTRACT for sub-tasks 6, 8, 9):
+ *
+ *         CustomEventInit<{
+ *           markdown: string;
+ *           source: 'paste' | 'keystroke' | 'init';
+ *         }>
+ *
+ *     Editor.astro is the dispatcher; Preview.astro is the listener. Future
+ *     dispatchers (sub-task 6 settings panel: `pilcrow:settings-changed`;
+ *     sub-task 9 share-URL: `pilcrow:share-state-loaded`) follow the same
+ *     pattern (CustomEvent on `document`, `detail` carries typed payload).
+ *
+ *   Q B (debounce): (e) smart — paste = immediate, keystrokes = debounced
+ *     150ms. The 150ms threshold is below perceptual lag (~200ms) and well
+ *     above BrowserRenderer's typical ~30ms typeset cost. Editor.astro is
+ *     responsible for the debounce + source-tagging; Preview just listens.
+ *
+ *   Q C (initial render timing): (b) — client-render on script load with a
+ *     reserved height to prevent layout shift. NO loading text (the actual
+ *     typeset cost after wasm warmup is sub-100ms). Eager BrowserRenderer
+ *     `open()` on page load: wasm fetch and font weight requests run in
+ *     background while the user reads the stand-in HTML fallback. By the
+ *     time they paste/type, the renderer is warm.
+ *
+ *   Q D (error handling): (a) — graceful degradation. If BrowserRenderer
+ *     init or typeset() throws, the preview falls back to the markdown
+ *     source rendered as plain HTML paragraphs (split on blank lines —
+ *     no new dep needed; the playground stand-in is plain prose). A single
+ *     muted line at the top surfaces the failure honestly:
+ *     "Pilcrow's typesetter couldn't initialise — showing plain HTML."
+ *
+ *   Q E (settings shape): forward declaration only — first version uses
+ *     hard-coded defaults that match the published site:
+ *       - `dropCap: true`
+ *       - NO `maxWidth` override (let `--prose-measure` derive 65ch)
+ *       - NO `fontShorthand` override (let probe-paragraph derivation pick
+ *         up the .post-body cascade)
+ *       - NO `lineHeight` override (let probe-paragraph derivation pick up
+ *         CSS `line-height: 1.7`)
+ *     Sub-task 6 will swap these for live reads from the settings panel.
+ *
+ * ─── JS-disabled fallback ───────────────────────────────────────────────────
+ *   The pane server-renders the same stand-in prose as plain HTML paragraphs
+ *   (no markdown library needed — the stand-in is a single paragraph of plain
+ *   text). With JS off the user sees readable Fraunces-set prose at 65ch
+ *   inside the pane — not a typeset (no pretext line breaks) but legible,
+ *   intentional, on-brand. The hydration script then upgrades this to the
+ *   typeset version when JS is available.
+ */
+
+// Stand-in prose — verbatim copy of Editor.astro's STAND_IN_PROSE so the
+// initial preview render matches the editor's initial value byte-for-byte.
+// (Sub-task 5's editor uses this string as `data-stand-in="true"` content.)
+const STAND_IN_PROSE =
+  "The cheapest signal a writer can send is the one buried in their type. " +
+  "Set the same paragraph in two faces and the reader feels two different " +
+  "writers — one calmer, one more insistent — without ever naming the " +
+  "difference. Editorial typography is the part of writing that travels " +
+  "under the words, doing its work before the reader knows there was work " +
+  "to do, and Pilcrow exists to put that work back in reach for the open web.";
+---
+
+<h2 id="playground-preview-label" class="preview-label">Preview</h2>
+
+{/* The typeset frame — the centred container that holds the .post-body
+    host. Its job is positioning + padding; the typeset itself sits inside
+    at its natural 65ch width. The reserved min-height prevents layout
+    shift between the JS-disabled fallback and the typeset upgrade. */}
+<div class="preview-frame">
+  <div
+    id="playground-preview-host"
+    class="post-body"
+    aria-live="polite"
+    data-preview-state="initial"
+  >
+    {/* JS-disabled fallback: plain prose paragraph rendered at SSR.
+        BrowserRenderer's hydration replaces this innerHTML on first init.
+        The .post-body class above ensures `--prose-measure: 65ch` and the
+        editorial cascade apply identically to the typeset that will replace
+        this content. */}
+    <p>{STAND_IN_PROSE}</p>
+  </div>
+  {/* Failure notice — hidden by default; toggled visible by the script if
+      BrowserRenderer init or typeset() throws. Q D resolution. Inter,
+      muted, single line. */}
+  <p
+    id="playground-preview-fallback-notice"
+    class="preview-fallback-notice"
+    hidden
+  >
+    Pilcrow's typesetter couldn't initialise — showing plain HTML.
+  </p>
+</div>
+
+<script>
+  /**
+   * Preview hydration — wires BrowserRenderer to the editor event contract.
+   *
+   * Lifecycle:
+   *   1. On script load: instantiate BrowserRenderer, eagerly call open().
+   *      Wasm fetch + font weight loads happen in background while the user
+   *      reads the SSR stand-in fallback.
+   *   2. Once open() resolves: typeset the stand-in to land the first real
+   *      preview (source: 'init'). Layout shift is bounded by the reserved
+   *      min-height on `.preview-frame`.
+   *   3. Listen for `pilcrow:editor-changed` events. Each event runs typeset
+   *      with the new markdown; on failure, fall back to plain-HTML paragraph
+   *      rendering and surface the muted notice.
+   *
+   * The script is intentionally small and self-contained. Sub-tasks 6, 8, 9
+   * will dispatch their own events on `document` (e.g.
+   * `pilcrow:settings-changed`) — when they ship, this listener gets a
+   * companion that re-typesets with the new options. The contract is the
+   * CustomEvent + `detail` shape, not a shared bus.
+   */
+
+  import { BrowserRenderer } from '../../lib/playground/browser-renderer.ts';
+
+  // ─── Event contract — the typed surface sub-tasks 6/9 build against ─────
+  interface EditorChangedDetail {
+    markdown: string;
+    source: 'paste' | 'keystroke' | 'init';
+  }
+
+  // ─── DOM handles ────────────────────────────────────────────────────────
+  const host = document.getElementById(
+    'playground-preview-host',
+  ) as HTMLDivElement | null;
+  const fallbackNotice = document.getElementById(
+    'playground-preview-fallback-notice',
+  ) as HTMLParagraphElement | null;
+
+  if (host && fallbackNotice) {
+    // Stand-in prose — kept in sync with Editor.astro (and the SSR fallback
+    // above) so the first typeset matches the editor's initial value. If
+    // Editor.astro changes its stand-in copy, update both.
+    const STAND_IN =
+      "The cheapest signal a writer can send is the one buried in their type. " +
+      "Set the same paragraph in two faces and the reader feels two different " +
+      "writers — one calmer, one more insistent — without ever naming the " +
+      "difference. Editorial typography is the part of writing that travels " +
+      "under the words, doing its work before the reader knows there was work " +
+      "to do, and Pilcrow exists to put that work back in reach for the open web.";
+
+    // ─── Plain-HTML fallback (Q D) ────────────────────────────────────────
+    // No markdown library — the playground v0 stand-in is plain prose. The
+    // converter splits on blank lines and wraps each block in <p>. HTML-
+    // escapes input so user-pasted content can't inject script tags.
+    const escapeHTML = (s: string): string =>
+      s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    const markdownToPlainHTML = (md: string): string => {
+      const blocks = md
+        .split(/\n{2,}/)
+        .map((b) => b.trim())
+        .filter((b) => b.length > 0);
+      if (blocks.length === 0) return '<p></p>';
+      return blocks.map((b) => `<p>${escapeHTML(b)}</p>`).join('\n');
+    };
+
+    // ─── Markdown → HTML (input to BrowserRenderer) ───────────────────────
+    // BrowserRenderer expects HTML (a `.post-body` body), not raw markdown.
+    // For sub-task 7 the playground's stand-in is plain prose with no
+    // markdown formatting; the same blank-line-to-paragraph conversion that
+    // powers the Q D fallback also works as the input transform. Sub-task 6
+    // (or whenever Pilcrow's markdown pipeline gets ported to the browser)
+    // can swap this for the real remark/rehype directive pipeline.
+    const sourceToBodyHTML = (md: string): string => markdownToPlainHTML(md);
+
+    // ─── Typeset state ────────────────────────────────────────────────────
+    const renderer = new BrowserRenderer();
+    let rendererReady = false;
+    let lastFailed = false;
+    // Coalesce overlapping typeset() calls — only the latest source wins.
+    let pendingMarkdown: string | null = null;
+    let typesetting = false;
+
+    const showFallback = (md: string, message?: string): void => {
+      lastFailed = true;
+      host.innerHTML = markdownToPlainHTML(md);
+      host.dataset.previewState = 'fallback';
+      fallbackNotice.hidden = false;
+      if (message) {
+        // eslint-disable-next-line no-console
+        console.warn('[pilcrow:preview]', message);
+      }
+    };
+
+    const clearFallback = (): void => {
+      if (lastFailed) {
+        lastFailed = false;
+        fallbackNotice.hidden = true;
+      }
+    };
+
+    const runTypeset = async (md: string, source: EditorChangedDetail['source']): Promise<void> => {
+      // Coalesce: if a typeset is in flight, queue the latest input and let
+      // the running call pick it up when it finishes.
+      if (typesetting) {
+        pendingMarkdown = md;
+        return;
+      }
+      typesetting = true;
+      try {
+        const bodyHTML = sourceToBodyHTML(md);
+        // No `maxWidth` — let resolveProseMeasurePx() derive 65ch from CSS.
+        // No `fontShorthand` — let probe-paragraph derivation pick it up.
+        // No `lineHeight` — same.
+        // TODO sub-task 6: read `dropCap`, font, measure, line-height from
+        // the settings panel via getElementById on the settings inputs.
+        const result = await renderer.typeset(bodyHTML, {
+          fontShorthand: '',
+          maxWidth: 0,
+          lineHeight: 0,
+          dropCap: true,
+          postPath: `playground (${source})`,
+        });
+        host.innerHTML = result.html;
+        host.dataset.previewState = source === 'init' ? 'initial-typeset' : 'live';
+        clearFallback();
+      } catch (err) {
+        showFallback(md, `typeset failed (source=${source}): ${(err as Error).message}`);
+      } finally {
+        typesetting = false;
+        // Drain queued input — if a newer event arrived during the run,
+        // process it now. This guarantees the preview reflects the *latest*
+        // editor state, not whichever event happened to win the race.
+        if (pendingMarkdown !== null) {
+          const next = pendingMarkdown;
+          pendingMarkdown = null;
+          // Re-enter via the same code path; tag as 'keystroke' since we
+          // can't recover the original source and 'keystroke' is the
+          // benign default.
+          void runTypeset(next, 'keystroke');
+        }
+      }
+    };
+
+    // ─── Eager BrowserRenderer.open() (Q C sub-question) ──────────────────
+    // Kicks off wasm fetch + Fraunces weight loads in the background. The
+    // user sees the SSR plain-HTML fallback in the meantime, which is
+    // already styled (Fraunces, 65ch, paper bg) — only line breaks differ
+    // from the typeset.
+    renderer
+      .open()
+      .then(async () => {
+        rendererReady = true;
+        // First typeset on the stand-in (source: 'init') — lands the
+        // typeset baseline before the user has interacted.
+        await runTypeset(STAND_IN, 'init');
+      })
+      .catch((err) => {
+        // Renderer initialisation failed (e.g. Intl.Segmenter unavailable
+        // on Firefox <125). Surface plain HTML and the muted notice.
+        showFallback(STAND_IN, `BrowserRenderer.open() failed: ${(err as Error).message}`);
+      });
+
+    // ─── Editor event listener ────────────────────────────────────────────
+    document.addEventListener('pilcrow:editor-changed', (event) => {
+      const detail = (event as CustomEvent<EditorChangedDetail>).detail;
+      if (!detail || typeof detail.markdown !== 'string') return;
+      // If the renderer hasn't finished opening yet, fall back to plain HTML
+      // so the user still sees their content. The init resolution above will
+      // overwrite with the typeset version once ready.
+      if (!rendererReady) {
+        host.innerHTML = markdownToPlainHTML(detail.markdown);
+        host.dataset.previewState = 'pending';
+        return;
+      }
+      void runTypeset(detail.markdown, detail.source);
+    });
+  }
+</script>
+
+<style>
+  /* Label — Inter, small caps via uppercase + tracking, muted. Same recipe
+     as Editor.astro's `.editor-label`, rephrased for the preview pane. */
+  .preview-label {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+
+  /* The frame — the centred container that holds the .post-body host.
+     The pane (`section.playground-preview` in `index.astro`) is wide; this
+     frame centres the typeset output (which renders at its natural 65ch)
+     and provides breathing room around it.
+
+     `min-height: 30rem` reserves vertical space so the JS-disabled SSR
+     fallback and the eventual typeset upgrade occupy the same height
+     budget — no layout shift on first typeset.
+
+     The pane padding (1.25rem from index.astro) handles the outer inset;
+     the inner padding here adds editorial breathing room ABOVE/BELOW the
+     typeset output (the 65ch column gives its own horizontal restraint
+     via Pilcrow's `.post-body` cascade). */
+  .preview-frame {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 30rem;
+    padding: 1.5rem 0.5rem;
+  }
+
+  /* The .post-body host. Pilcrow's `--prose-measure: 65ch` is set on
+     `.post-body` in global.css — by adding the class here, the host
+     inherits that custom property AND the body grid + 65ch column
+     identically to `pilcrow.page/posts/<slug>/`. The typeset that
+     BrowserRenderer drops in carries no inline width; it sits in the
+     65ch prose column naturally.
+
+     The host also picks up `font-family: Fraunces`, `line-height: 1.7`,
+     and the colour token cascade — so the SSR fallback paragraph reads
+     in the same register as the typeset output that will replace it. */
+  #playground-preview-host {
+    /* Width: let the .post-body grid do its job. The grid is 0 | 65ch |
+       2rem | 25ch (~92ch total at the body root). Inside the playground
+       pane (which is wider than 65ch on desktop but narrower than ~92ch
+       in the 1fr/1fr layout below), we want the prose column to land
+       centred. Setting width: 100% + max-content lets the .post-body
+       Grid resolve to its natural width but never overflow the pane. */
+    width: 100%;
+    max-width: 65ch;
+  }
+
+  /* Override .post-body's bottom margin on its last paragraph so the
+     reserved frame height isn't padded twice. Targets only the preview
+     host so .post-body elsewhere on the site is unaffected. */
+  #playground-preview-host > p:last-child {
+    margin-bottom: 0;
+  }
+
+  /* Failure notice — Inter, muted, single line. Hidden by default;
+     surfaced by the script via `hidden` attribute toggle. */
+  .preview-fallback-notice {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 1rem 0 0;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* On narrow viewports, drop the centred-frame inset so the prose has
+     room to breathe in the pane. The 65ch max-width on the host already
+     provides the column constraint; we just want less side gutter. */
+  @media (max-width: 767px) {
+    .preview-frame {
+      padding: 1rem 0;
+    }
+  }
+</style>

@@ -45,6 +45,23 @@
  * design (debounced typeset trigger) lives in sub-task 7 alongside the
  * preview wiring.
  *
+ * Sub-task 7 update — event emission ONLY. UX behaviours from sub-task 5
+ * are unchanged. The textarea now dispatches `pilcrow:editor-changed`
+ * CustomEvents on `document` so Preview.astro (and future settings/share
+ * components) can listen without coupling. Contract:
+ *
+ *     CustomEventInit<{
+ *       markdown: string;
+ *       source: 'paste' | 'keystroke' | 'init';
+ *     }>
+ *
+ * Debounce strategy (Q B of sub-task 7): SMART —
+ *   - paste = immediate dispatch (the high-value action; designer pastes
+ *     their writing and wants to see it set inside the 100ms perceptual
+ *     budget from PILCROW_PLAYGROUND_PLAN.md §6)
+ *   - keystroke = debounced 150ms (below perceptual lag threshold ~200ms,
+ *     well above BrowserRenderer's typical ~30ms typeset cost)
+ *
  * Sub-question (resize): (i) `resize: vertical` with min/max bounds. Lets
  * the user grow the source area without breaking parent layout.
  *
@@ -93,6 +110,36 @@ const STAND_IN_PROSE =
   ) as HTMLTextAreaElement | null;
 
   if (textarea) {
+    // ─── Sub-task 7: event contract ──────────────────────────────────────
+    // Dispatch `pilcrow:editor-changed` CustomEvents on `document` so any
+    // listener (Preview, future Settings, future ShareUrl) can react. The
+    // contract is the detail shape, not a shared bus. See the file header
+    // for the verbatim CustomEventInit type.
+    interface EditorChangedDetail {
+      markdown: string;
+      source: 'paste' | 'keystroke' | 'init';
+    }
+    const dispatchChanged = (source: EditorChangedDetail['source']): void => {
+      const event = new CustomEvent<EditorChangedDetail>(
+        'pilcrow:editor-changed',
+        { detail: { markdown: textarea.value, source }, bubbles: true },
+      );
+      document.dispatchEvent(event);
+    };
+
+    // Debounce timer for keystroke dispatch. Paste bypasses this for
+    // immediate feedback. 150ms is below perceptual lag and well above
+    // BrowserRenderer's typeset cost.
+    const KEYSTROKE_DEBOUNCE_MS = 150;
+    let keystrokeTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleKeystroke = (): void => {
+      if (keystrokeTimer !== null) clearTimeout(keystrokeTimer);
+      keystrokeTimer = setTimeout(() => {
+        keystrokeTimer = null;
+        dispatchChanged('keystroke');
+      }, KEYSTROKE_DEBOUNCE_MS);
+    };
+
     // The textarea starts with `data-stand-in="true"`. Cleared on the first
     // user keystroke (input event). Once cleared, paste behaviour switches
     // from "replace entire content" to "insert at cursor."
@@ -111,6 +158,7 @@ const STAND_IN_PROSE =
       // inputTypes like 'insertText', 'deleteContentBackward', etc.
       if ((event as InputEvent).inputType === 'insertFromPaste') return;
       clearStandIn();
+      scheduleKeystroke();
     });
 
     /**
@@ -123,26 +171,46 @@ const STAND_IN_PROSE =
      * For "insert at cursor" we let the browser handle it natively (the
      * default behaviour is exactly insert-at-selection, which is what we
      * want).
+     *
+     * Sub-task 7: paste dispatches `pilcrow:editor-changed` IMMEDIATELY
+     * (source: 'paste') — no debounce — so the preview re-typesets inside
+     * the §6 100ms paste-to-typeset budget. Both the replace-on-stand-in
+     * and the native-cursor-insert paths converge through the listener
+     * below: cancel any pending keystroke timer, then dispatch on the next
+     * task tick (so the textarea value reflects the pasted text whether
+     * the browser inserted it natively or we set it manually).
      */
     textarea.addEventListener('paste', (event) => {
-      if (textarea.dataset.standIn !== 'true') {
-        // Stand-in already cleared — let native paste behaviour run.
+      // Cancel any pending debounced keystroke — the paste dispatch below
+      // will subsume it.
+      if (keystrokeTimer !== null) {
+        clearTimeout(keystrokeTimer);
+        keystrokeTimer = null;
+      }
+
+      if (textarea.dataset.standIn === 'true') {
+        // Stand-in still active: replace entire content with pasted text.
+        const clipboardData = event.clipboardData;
+        if (!clipboardData) return;
+        const pasted = clipboardData.getData('text/plain');
+        if (!pasted) return;
+
+        event.preventDefault();
+        textarea.value = pasted;
+        // Cursor at the end of pasted content.
+        textarea.setSelectionRange(pasted.length, pasted.length);
+        // Mark stand-in cleared so subsequent pastes use native cursor insert.
+        delete textarea.dataset.standIn;
+        // Dispatch immediately — paste is the high-value action, no debounce.
+        dispatchChanged('paste');
         return;
       }
-      // Stand-in still active: replace entire content with pasted text.
-      const clipboardData = event.clipboardData;
-      if (!clipboardData) return;
-      const pasted = clipboardData.getData('text/plain');
-      if (!pasted) return;
 
-      event.preventDefault();
-      textarea.value = pasted;
-      // Cursor at the end of pasted content.
-      textarea.setSelectionRange(pasted.length, pasted.length);
-      // Mark stand-in cleared so subsequent pastes use native cursor insert.
-      delete textarea.dataset.standIn;
-      // Notify any listener (sub-task 7 will hook this) that content changed.
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      // Native-paste path: the browser inserts at cursor on the next tick.
+      // Defer the dispatch one task so textarea.value reflects the pasted
+      // content. (Reading `value` synchronously from a paste handler returns
+      // the pre-paste content.)
+      setTimeout(() => dispatchChanged('paste'), 0);
     });
   }
 </script>
