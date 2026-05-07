@@ -1,0 +1,316 @@
+---
+/**
+ * Pilcrow Playground — page shell (sub-task 4 of PILCROW_PLAYGROUND_PLAN.md).
+ *
+ * This is intentionally a SHELL: route, layout chrome, and three labelled
+ * placeholder regions for the editor pane (sub-task 5), the settings panel
+ * (sub-task 6), and the preview pane (sub-task 7). No BrowserRenderer
+ * dependency is wired here; the page must render with JavaScript disabled.
+ *
+ * Layout topology (Question B default — two-column with top settings bar):
+ *   Desktop (≥768px):
+ *     ┌──────────────────────────────────────────────────┐
+ *     │ Settings bar (top, full-width)                   │
+ *     ├──────────────────────────┬───────────────────────┤
+ *     │ Editor pane (left)       │ Preview pane (right)  │
+ *     └──────────────────────────┴───────────────────────┘
+ *   Mobile (<768px): editor / preview on a CSS-driven radio-tab toggle;
+ *   settings collapse into a drawer-like region above. Pure CSS — no JS.
+ *
+ * Visual register (Question E default — contrast):
+ *   - Chrome (settings labels, buttons, placeholder labels): Inter — tool register.
+ *   - Preview pane: Fraunces — editorial register (the product the user is here to see).
+ *
+ * Empty-state strategy (Question D default applied):
+ *   The editor placeholder pre-loads a generic ~80-word stand-in paragraph.
+ *   The intended invitation prose (drop-cap + hyphenation + footnote demo) is
+ *   a FOLLOW-UP editorial-writer task before ship. This stand-in is a marker,
+ *   not the final copy.
+ */
+
+import Base from '../../layouts/Base.astro';
+---
+
+<Base title="Pilcrow Playground" chrome="minimal">
+  <main class="playground" aria-labelledby="playground-title">
+    <header class="playground-header">
+      <h1 id="playground-title">Playground</h1>
+      <p class="playground-lede">
+        Paste prose. Pick a typeface. See Pilcrow's editorial typesetting applied live.
+      </p>
+    </header>
+
+    {/* Settings panel — sub-task 6. Top bar on desktop; collapses above
+        the editor/preview tabs on mobile. */}
+    <section
+      id="playground-settings"
+      class="playground-settings"
+      data-placeholder="settings-panel"
+      aria-labelledby="playground-settings-label"
+    >
+      <h2 id="playground-settings-label" class="placeholder-label">
+        Settings panel — sub-task 6
+      </h2>
+      <p class="placeholder-hint">
+        Font, drop cap, hyphenation, measure, line height. Wired in sub-task 6.
+      </p>
+      {/* TODO sub-task 6: SettingsPanel component */}
+    </section>
+
+    {/* Mobile-only tab toggle. The two radio inputs are PROMOTED to direct
+        children of <main> (siblings of `.playground-panes`) so the
+        `:checked ~ .playground-panes …` general-sibling selector resolves
+        correctly below 768px. Pure CSS — no runtime JS; works with JS
+        disabled. The visible <label>s are wrapped in
+        `.playground-mobile-tabs` and toggled-visible by the breakpoint. */}
+    <input
+      type="radio"
+      name="playground-pane"
+      id="playground-tab-editor"
+      class="playground-tab-input"
+      checked
+    />
+    <input
+      type="radio"
+      name="playground-pane"
+      id="playground-tab-preview"
+      class="playground-tab-input"
+    />
+    <div class="playground-mobile-tabs" role="tablist" aria-label="Editor and preview tabs">
+      <label for="playground-tab-editor" class="playground-tab-label" role="tab">
+        Editor
+      </label>
+      <label for="playground-tab-preview" class="playground-tab-label" role="tab">
+        Preview
+      </label>
+    </div>
+
+    <div class="playground-panes">
+      {/* Editor pane — sub-task 5. Plain <textarea> + paste handling.
+          Pre-loaded stand-in below is a marker; final invitation copy
+          is a follow-up editorial-writer task before ship. */}
+      <section
+        id="playground-editor"
+        class="playground-editor"
+        data-placeholder="editor-pane"
+        aria-labelledby="playground-editor-label"
+      >
+        <h2 id="playground-editor-label" class="placeholder-label">
+          Editor pane — sub-task 5
+        </h2>
+        <p class="placeholder-hint">Markdown input with paste handling. Wired in sub-task 5.</p>
+        <pre class="placeholder-sample" aria-label="Pre-loaded stand-in prose">The cheapest signal a writer can send is the one buried in their type. Set the same paragraph in two faces and the reader feels two different writers — one calmer, one more insistent — without ever naming the difference. Editorial typography is the part of writing that travels under the words, doing its work before the reader knows there was work to do, and Pilcrow exists to put that work back in reach for the open web.</pre>
+        {/* TODO sub-task 5: Editor component */}
+      </section>
+
+      {/* Preview pane — sub-task 7. Renders BrowserRenderer output.
+          Editorial register: Fraunces, paper bg, generous margins.
+          DO NOT import src/lib/playground/browser-renderer.ts in this shell. */}
+      <section
+        id="playground-preview"
+        class="playground-preview"
+        data-placeholder="preview-pane"
+        aria-labelledby="playground-preview-label"
+      >
+        <h2 id="playground-preview-label" class="placeholder-label">
+          Preview pane — sub-task 7
+        </h2>
+        <p class="placeholder-hint">
+          Live typeset output — BrowserRenderer wired in sub-task 7.
+        </p>
+        {/* TODO sub-task 7: PreviewPane component */}
+      </section>
+    </div>
+  </main>
+</Base>
+
+<style>
+  /* The playground is a tool surface — wider than the editorial 65ch column.
+     Body padding (4rem 1rem 2rem from global.css) still applies to .site-nav
+     centering, but the playground main expands out to the viewport. */
+  .playground {
+    max-width: 90rem;
+    margin: 0 auto;
+  }
+
+  .playground-header {
+    margin-bottom: 2rem;
+  }
+
+  .playground-header h1 {
+    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+    margin: 0 0 0.25rem;
+  }
+
+  .playground-lede {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.95rem;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* ─── Settings (top bar) ─────────────────────────────────────────────── */
+  .playground-settings {
+    border: 1px solid var(--rule);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    background: var(--paper);
+  }
+
+  /* ─── Mobile tab toggle ──────────────────────────────────────────────── */
+  /* Hidden by default on desktop; revealed below 768px via the breakpoint
+     block at the bottom. The two <input type="radio"> elements drive sibling
+     :checked rules to swap which pane is visible. */
+  .playground-mobile-tabs {
+    display: none;
+  }
+
+  .playground-tab-input {
+    /* Visually hidden but accessible to keyboard / SR — same pattern as
+       .visually-hidden in global.css. */
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .playground-tab-label {
+    flex: 1;
+    text-align: center;
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--rule);
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    cursor: pointer;
+    background: var(--paper);
+    user-select: none;
+  }
+
+  /* Selected tab takes ink colour; deselected stays muted. The radios sit
+     above the tab container as siblings; reach inside via `~` + attribute
+     selector since the labels are no longer immediate adjacent siblings. */
+  #playground-tab-editor:checked ~ .playground-mobile-tabs label[for="playground-tab-editor"],
+  #playground-tab-preview:checked ~ .playground-mobile-tabs label[for="playground-tab-preview"] {
+    color: var(--ink);
+    border-color: var(--ink);
+  }
+
+  /* Keyboard focus ring — meets WCAG focus-visible contract. */
+  #playground-tab-editor:focus-visible ~ .playground-mobile-tabs label[for="playground-tab-editor"],
+  #playground-tab-preview:focus-visible ~ .playground-mobile-tabs label[for="playground-tab-preview"] {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* ─── Two-column panes ───────────────────────────────────────────────── */
+  /* Desktop default: editor LEFT, preview RIGHT. Equal columns. The fixed
+     gap matches the 2rem rhythm used by the prose grid (column 3 of the
+     post-body grid in global.css). */
+  .playground-panes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+  }
+
+  /* Each pane is a bordered surface with consistent padding. Min height so
+     the placeholder content visibly occupies the layout — when the real
+     editor/preview wire in, they'll set their own heights. */
+  .playground-editor,
+  .playground-preview {
+    border: 1px solid var(--rule);
+    padding: 1.25rem;
+    min-height: 24rem;
+    background: var(--paper);
+  }
+
+  /* The preview pane is editorial: Fraunces, body line-height. The editor
+     and settings panes are tool register: Inter (set per-element below). */
+  .playground-preview {
+    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    line-height: 1.7;
+  }
+
+  /* ─── Placeholder labels (visible in shell) ─────────────────────────── */
+  /* Each placeholder region announces its sub-task in Inter so it's obvious
+     in the rendered shell what's there and what isn't. Removed when the
+     real component lands. */
+  .placeholder-label {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+
+  .placeholder-hint {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0 0 1rem;
+  }
+
+  .placeholder-sample {
+    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--ink);
+    white-space: pre-wrap;
+    margin: 0;
+    padding: 0.75rem;
+    border: 1px dashed var(--rule);
+    background: var(--paper);
+  }
+
+  /* ─── Mobile fallback (<768px) ───────────────────────────────────────── */
+  /* Editor / preview switch via radio tabs; settings stay above as a stacked
+     block. The tab labels become the visible UI below this breakpoint. */
+  @media (max-width: 767px) {
+    .playground-mobile-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .playground-panes {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+
+    /* By default below 768px, hide both panes — the :checked rules below
+       reveal one at a time. */
+    .playground-editor,
+    .playground-preview {
+      display: none;
+    }
+
+    /* Editor tab checked → show editor pane (preview hidden). */
+    #playground-tab-editor:checked ~ .playground-panes .playground-editor {
+      display: block;
+    }
+
+    /* Preview tab checked → show preview pane (editor hidden). */
+    #playground-tab-preview:checked ~ .playground-panes .playground-preview {
+      display: block;
+    }
+  }
+
+  /* ─── Compact body padding on the playground ─────────────────────────── */
+  /* Global body padding (4rem 1rem 2rem) leaves a deep top inset designed
+     for centred prose. The playground reads better with a tighter inset
+     so the tools sit closer to the chrome wordmark. */
+  :global(body:has(.playground)) {
+    padding-top: 2.5rem;
+  }
+</style>

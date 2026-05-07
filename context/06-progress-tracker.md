@@ -8,14 +8,28 @@
 
 ## Current phase
 
-**Phase:** v1 shipped → v3 sprint (engine extraction to packages/pilcrow-typeset/) in progress
-**Current goal:** Complete v3 sprint Deliverable A (engine extraction). Then return to first post-shipped feature spec.
+**Phase:** v3 shipped → playground sprint (Levels 1–3 of `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md`) in progress
+**Current goal:** Ship Level 1 of the playground sprint. Page shell at `/playground/` is now live; sub-tasks 5–7 (editor, settings, preview wiring) follow.
 **Owner:** Chanikul
 **Updated:** 2026-05-07
 
 ---
 
 ## In progress
+
+### Playground sprint — Level 1 (page shell + components)
+
+Per `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md` §3.
+
+| Date | Sub-task | Files |
+|------|----------|-------|
+| 2026-05-06 | 1: pretext browser-compat spike (PASS — `@chenglou/pretext@0.0.6` works in browser without Playwright) | `src/scripts/spike-pretext-browser.ts` |
+| 2026-05-06 | 2: `BrowserRenderer` class implementing `TypesetRenderer` — mirrors `playwright.ts` feature-for-feature (column-width derivation, drop-cap float-aware narrowing, SHY pre-pass, orphan guard) | `src/lib/playground/{browser-renderer,hyphenate-browser}.ts` |
+| 2026-05-07 | 4: page shell at `/playground/` — two-column desktop (editor LEFT, preview RIGHT) with top settings bar; mobile fallback below 768px swaps to CSS-only radio-tab toggle (editor/preview); minimal chrome (Pilcrow ¶ wordmark only — added optional `chrome` prop to `Base.astro`); Inter for tool register, Fraunces in preview pane; three labelled placeholders with `data-placeholder` attrs for sub-tasks 5/6/7; pre-loaded stand-in prose in editor (final invitation copy is a follow-up editorial-writer task) | `src/pages/playground/index.astro`, `src/layouts/Base.astro` |
+
+Remaining (Level 1): sub-task 5 (editor pane — paste handling, textarea, basic markdown), sub-task 6 (settings panel — font/dropCap/hyphenation/measure/lineHeight controls), sub-task 7 (wire `BrowserRenderer` to preview pane), sub-tasks 8–10 (copy-HTML, share-URL, end-to-end test against `the-cheapest-signal`).
+
+---
 
 ### v3 sprint — engine extraction to `packages/pilcrow-typeset/`
 
@@ -96,6 +110,16 @@ These are deferred items from `NOTES.md` and observations from `.claude/learning
 - `NOTES.md` and `.claude/learnings.md` left in place — referenced from the new context files.
 - `agents.md` and `context/feature-specs/` added; `context/current-issues.md` added (gitignored).
 - Next: write spec 01 for the first post-shipped feature.
+
+### 2026-05-07 — Playground page shell shipped (sub-task 4)
+- **Sub-task 4 of `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md` shipped.** `/playground/` now resolves to a static shell with three labelled placeholders for editor (sub-task 5), settings (sub-task 6), and preview (sub-task 7). No `BrowserRenderer` import in this page — wiring happens in sub-task 7.
+- **Layout topology:** two-column on desktop (editor LEFT, preview RIGHT), settings as a top bar; below 768px the panes collapse to a CSS-only radio-tab toggle (no runtime JS — works with JS disabled). The radios are promoted to direct children of `<main>` so the `:checked ~ .playground-panes …` general-sibling selector resolves through the panes container.
+- **Chrome treatment:** minimal — Pilcrow ¶ wordmark only, no Library link. Added an additive `chrome?: 'full' | 'minimal'` prop to `Base.astro`; default is `'full'` (existing pages unchanged). The Library link is conditionally rendered.
+- **Visual register:** Fraunces in the preview pane (editorial register — the product the user is here to see); Inter for chrome/tool elements (settings labels, tab labels, placeholder labels). Per Question E default of contrast.
+- **Empty-state:** generic ~80-word stand-in paragraph pre-loaded in the editor placeholder. Flagged as a follow-up: the final invitation prose (drop-cap + hyphenation + footnote demo) is an editorial-writer task before the playground ships.
+- **Build:** clean. `bun run build` produced 16 pages including `/playground/index.html`. The pre-existing `[pilcrow] posts/inline-markup/: unsupported inline element <br> …` warning is unchanged (acknowledged in the task brief).
+- **Verification (over `bun run preview`, HTTP 200, hand-checked HTML):** all three `data-placeholder` attrs present; Library link absent on the playground page (`grep -c` returns 0); Library link still present on `/`, `/posts/hello/`, `/library/` (regression-free); placeholder visible labels render correctly.
+- Next: sub-task 5 (editor pane — paste handling, textarea, basic markdown awareness — likely typography-architect again).
 
 ### 2026-05-07 — BrowserRenderer chapter + agent registration
 - **BrowserRenderer arc:** built the playground's client-side typesetting renderer that mirrors `playwright.ts` for the upcoming `/playground` page. Caught a Linux Playwright Chromium 147 bug where variable-axis TTF fonts silently fail to render despite `FontFace.status === 'loaded'`. Switched body type from variable Fraunces (803 KB) to four static 144pt instances (389 KB total): Regular 400, SemiBold 600, Bold 700, Italic 400. Drop-cap weight changed 500 → 600 (static release ships no Medium). Residual ~3% line-count drift on long posts vs CF Pages remains as a known FreeType-vs-CoreText rasterisation envelope. v1.x candidate filed: Linux build container for byte-identical typeset parity (see `NOTES.md`).

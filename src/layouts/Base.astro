@@ -12,8 +12,16 @@ interface Props {
    * Dimensions are always 1200×630 (D2=A).
    */
   slug?: string;
+  /**
+   * Chrome variant for the top nav.
+   *   - 'full' (default): Pilcrow wordmark + Library link. Editorial register.
+   *   - 'minimal': Pilcrow wordmark only — no secondary links.
+   * Used by the playground (where the editor pane is visually heavy and the
+   * surrounding chrome should recede; per Question C of sub-task 4).
+   */
+  chrome?: 'full' | 'minimal';
 }
-const { title, dropCap, slug } = Astro.props;
+const { title, dropCap, slug, chrome = 'full' } = Astro.props;
 
 // Canonical site origin — must match astro.config.mjs `site`.
 const SITE = 'https://pilcrow.page';
@@ -46,7 +54,7 @@ const ogImage = slug
   <body>
     <nav class="site-nav" aria-label="Primary">
       <a href="/" class="site-nav-mark">Pilcrow <span aria-hidden="true">¶</span></a>
-      <a href="/library/" class="site-nav-link">Library</a>
+      {chrome === 'full' && <a href="/library/" class="site-nav-link">Library</a>}
     </nav>
     <slot />
     {siteConfig.showPilcrowFooter && (
