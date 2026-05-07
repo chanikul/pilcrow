@@ -475,6 +475,20 @@ export class BrowserRenderer implements TypesetRenderer {
     // to settle so canvas measurement uses the configured typeface (same gate
     // playwright.ts uses; see spike findings).
     await document.fonts.ready;
+
+    // Eagerly request every weight/style of Fraunces the production CSS
+    // declares. document.fonts.ready only waits for fonts that already-rendered
+    // content has requested; weights used solely by elements created later
+    // (e.g. the drop-cap span at SemiBold 600, injected during typeset()) are
+    // not in that set, and Canvas/getBoundingClientRect would silently fall
+    // back to a near-weight Regular for the first measurement. Explicitly
+    // resolving each weight here closes that race.
+    await Promise.all([
+      document.fonts.load('400 1em Fraunces'),
+      document.fonts.load('600 1em Fraunces'),
+      document.fonts.load('700 1em Fraunces'),
+      document.fonts.load('italic 400 1em Fraunces'),
+    ]);
   }
 
   async close(): Promise<void> {
@@ -498,17 +512,31 @@ export class BrowserRenderer implements TypesetRenderer {
 
     // Mount the body in a hidden, off-screen `.post-body` so we can run the
     // same getComputedStyle / getBoundingClientRect probes the production
-    // pipeline uses inside Playwright. The host element is a direct child of
-    // `<body>` so it inherits global.css unchanged.
+    // pipeline uses inside Playwright.
+    //
+    // Wrap the host in an offscreen-positioned container, leaving the host
+    // itself in normal flow inside that wrapper. The host inherits the full
+    // `.post-body` cascade from global.css; the wrapper handles offscreen
+    // positioning. (An earlier attempt put `position: absolute` on the host
+    // itself, which works for offscreen-ness but is no different in cap
+    // measurement — what actually fixed cap-rect parity was the explicit
+    // document.fonts.load() preload in open(), which forces SemiBold (used
+    // only by the cap span injected during typeset()) to load before
+    // document.fonts.ready resolves; otherwise getBoundingClientRect on the
+    // freshly injected cap falls back to synthetic-bold-Regular.)
+    //
+    // TODO: extract the canonical measurement-context shape into a shared
+    // helper used by both renderers (currently duplicated between
+    // packages/pilcrow-typeset/src/playwright.ts loaderHTML and this host).
+    const offscreen = document.createElement('div');
+    offscreen.setAttribute('aria-hidden', 'true');
+    offscreen.style.cssText =
+      'position:absolute;left:-100000px;top:0;visibility:hidden;width:65ch;';
     const host = document.createElement('div');
     host.className = 'post-body';
-    host.setAttribute('aria-hidden', 'true');
-    // visibility:hidden keeps layout intact (so widths/heights are real) but
-    // removes the element from a11y / paint. position:absolute pulls it out
-    // of flow so it doesn't shift the page during typesetting.
-    host.style.cssText = 'position:absolute;left:-100000px;top:0;visibility:hidden;';
     host.innerHTML = bodyHTML;
-    document.body.appendChild(host);
+    offscreen.appendChild(host);
+    document.body.appendChild(offscreen);
 
     try {
       // (3a) Column width — read from --prose-measure on the mounted .post-body
@@ -839,7 +867,7 @@ export class BrowserRenderer implements TypesetRenderer {
       const outHTML = host.innerHTML;
       return { html: outHTML, lineCount: totalLines, paragraphCount: paragraphs.length };
     } finally {
-      host.remove();
+      offscreen.remove();
     }
   }
 }
