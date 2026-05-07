@@ -12,6 +12,43 @@
  *   If you rename any of those selectors or properties, update playwright.ts too.
  */
 
+/* Fraunces — self-hosted static TTFs at 144pt opsz.
+ * The typeset pipeline (packages/pilcrow-typeset/src/playwright.ts) depends on
+ * Fraunces being deterministically loadable. Variable TTFs failed silently in
+ * Linux Playwright Chromium 147 (headless build container) — bytes served, but
+ * @font-face never bound to glyph rendering; fell back to system serif, causing
+ * line-break drift between local and deployed builds. Statics work everywhere.
+ * 144pt opsz across the whole surface for typographic consistency with the
+ * existing 700-at-144pt choice (the display-register cut for h1). */
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/Fraunces144pt-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/Fraunces144pt-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/Fraunces144pt-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/Fraunces144pt-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
 /* ─── Palette tokens ─────────────────────────────────────────────────────── */
 :root {
   --paper: #fafaf7;
@@ -92,7 +129,6 @@ h1 {
   font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
   font-size: 1.8rem;
   font-weight: 700;
-  font-variation-settings: "opsz" 144;
   letter-spacing: -0.015em;
   line-height: 1.2;
   margin-top: 0;
@@ -228,13 +264,18 @@ code {
  * line-height, padding, or margin requires re-running `bun run build`
  * so pretext can re-measure the float box and reflow the narrowed lines.
  *
- * font-weight: 500 — Fraunces has a true 500 weight that reads as belonging
- * to the text (per Butterick). Georgia mapped 500 to 400; Fraunces honours it. */
+ * font-weight: 600 — Static Fraunces release does not include weight 500.
+ * Drop-cap uses 600 (SemiBold) — the closest real cut that preserves the
+ * deliberate-subtler-than-700 intent. Variable Fraunces would honour 500
+ * directly, but Linux Playwright Chromium 147 fails to render variable TTFs
+ * in headless contexts (see learnings 2026-05-06). The Butterick provenance
+ * (Georgia mapped 500 → 400; Fraunces honours its own intermediate cuts)
+ * still applies; we just step to the next real cut up. */
 .lede .drop-cap {
   float: left;
   font-size: 4.6em;
   line-height: 0.85;
-  font-weight: 500;
+  font-weight: 600;
   padding: 0.05em 0.08em 0 0;
   margin-top: 0.05em;
 }

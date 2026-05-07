@@ -213,6 +213,9 @@ function pretextDistDir(): string {
 /** Virtual origin used for routing pretext files. */
 const PRETEXT_ORIGIN = 'http://pilcrow-local';
 const PRETEXT_PREFIX = `${PRETEXT_ORIGIN}/pretext/`;
+/** Virtual route for self-hosted Fraunces TTFs. Served from public/fonts/ on
+ * disk so the typeset pipeline never depends on a third-party font CDN. */
+const FONTS_PREFIX = `${PRETEXT_ORIGIN}/fonts/`;
 
 export class PlaywrightRenderer implements TypesetRenderer {
   private browser: Browser | null = null;
@@ -249,6 +252,30 @@ export class PlaywrightRenderer implements TypesetRenderer {
       }
     });
 
+    // Self-hosted Fraunces TTFs (static instances at 144pt opsz). The previous
+    // Google Fonts CDN dependency failed silently on the CF Pages build
+    // container; the variable-TTF interim fix exposed a separate failure mode
+    // in Linux Playwright Chromium 147 (loaded variable TTFs but never bound
+    // them to glyph rendering). Static TTFs work everywhere. Serving them off
+    // disk through this route eliminates any network dependency at typeset.
+    const publicFontsDir = join(process.cwd(), 'public', 'fonts');
+    await this.page.route(`${FONTS_PREFIX}**`, async (route) => {
+      const url = new URL(route.request().url());
+      const filename = url.pathname.replace('/fonts/', '');
+      const filePath = join(publicFontsDir, filename);
+      try {
+        const body = await readFile(filePath);
+        await route.fulfill({
+          contentType: 'font/ttf',
+          headers: { 'access-control-allow-origin': '*' },
+          body,
+        });
+      } catch (err) {
+        await route.abort('failed');
+        throw new Error(`[pilcrow] failed to serve font file ${filename}: ${String(err)}`);
+      }
+    });
+
   }
 
   async typeset(html: string, options: TypesetOptions): Promise<{ html: string; lineCount: number; paragraphCount: number }> {
@@ -270,8 +297,9 @@ export class PlaywrightRenderer implements TypesetRenderer {
     //      CSS is present and computable.
     //   2. Loads pretext layout.js and rich-inline.js as ES modules via the
     //      routed virtual origin.
-    //   3. Loads the same Google Fonts as Base.astro so Fraunces metrics are
-    //      available inside Playwright before pretext measures anything.
+    //   3. Declares self-hosted Fraunces @font-face served via FONTS_PREFIX
+    //      route so Fraunces metrics are deterministically available inside
+    //      Playwright. (Was Google Fonts CDN — failed silently on CF Pages.)
     //   4. Signals readiness via window.__pretextReady — gated on document.fonts.ready
     //      so Fraunces metrics are loaded before any pretext measurement.
     //
@@ -282,10 +310,31 @@ export class PlaywrightRenderer implements TypesetRenderer {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Inter:wght@400;600&display=swap" rel="stylesheet" />
   <style>
+    @font-face {
+      font-family: "Fraunces";
+      src: url("${FONTS_PREFIX}Fraunces144pt-Regular.ttf") format("truetype");
+      font-weight: 400;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: "Fraunces";
+      src: url("${FONTS_PREFIX}Fraunces144pt-SemiBold.ttf") format("truetype");
+      font-weight: 600;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: "Fraunces";
+      src: url("${FONTS_PREFIX}Fraunces144pt-Bold.ttf") format("truetype");
+      font-weight: 700;
+      font-style: normal;
+    }
+    @font-face {
+      font-family: "Fraunces";
+      src: url("${FONTS_PREFIX}Fraunces144pt-Italic.ttf") format("truetype");
+      font-weight: 400;
+      font-style: italic;
+    }
     *, *::before, *::after { box-sizing: border-box; }
     html { font-size: ${m.htmlFontSize}; }
     body {
