@@ -9,7 +9,7 @@
 ## Current phase
 
 **Phase:** v3 shipped → playground sprint (Levels 1–3 of `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md`) in progress
-**Current goal:** Ship Level 1 of the playground sprint. Page shell at `/playground/` is now live; sub-tasks 5–7 (editor, settings, preview wiring) follow.
+**Current goal:** Ship Level 1 of the playground sprint. Page shell + editor pane (sub-tasks 4–5) live; sub-task 7 (preview wired to BrowserRenderer) is the recommended next step before sub-task 6 (settings).
 **Owner:** Chanikul
 **Updated:** 2026-05-07
 
@@ -26,8 +26,9 @@ Per `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md` §3.
 | 2026-05-06 | 1: pretext browser-compat spike (PASS — `@chenglou/pretext@0.0.6` works in browser without Playwright) | `src/scripts/spike-pretext-browser.ts` |
 | 2026-05-06 | 2: `BrowserRenderer` class implementing `TypesetRenderer` — mirrors `playwright.ts` feature-for-feature (column-width derivation, drop-cap float-aware narrowing, SHY pre-pass, orphan guard) | `src/lib/playground/{browser-renderer,hyphenate-browser}.ts` |
 | 2026-05-07 | 4: page shell at `/playground/` — two-column desktop (editor LEFT, preview RIGHT) with top settings bar; mobile fallback below 768px swaps to CSS-only radio-tab toggle (editor/preview); minimal chrome (Pilcrow ¶ wordmark only — added optional `chrome` prop to `Base.astro`); Inter for tool register, Fraunces in preview pane; three labelled placeholders with `data-placeholder` attrs for sub-tasks 5/6/7; pre-loaded stand-in prose in editor (final invitation copy is a follow-up editorial-writer task) | `src/pages/playground/index.astro`, `src/layouts/Base.astro` |
+| 2026-05-07 | 5: editor pane — extracted `<Editor />` component (server-rendered textarea + small hydration script). System monospace stack for the source surface (signals "editor", not "writing pad"); Inter for label + hint chrome; resize: vertical with 12rem/30rem bounds; focus ring uses `var(--accent)` not browser default. Smart paste (Question C): if `data-stand-in="true"` still set → replace entire content; otherwise → insert at cursor (native). Tab key (Question D): default browser behaviour — focus moves off, accessibility wins. Stand-in marker cleared on first user input (typing or replace-paste). No per-keystroke work and no preview wiring (Question E) — preview pubsub belongs to sub-task 7. JS-disabled-safe: textarea ships with stand-in prose as a plain `<textarea>`, still editable, only smart-paste is missing. Verified via Playwright headless: smart-paste replace, native-paste cursor insert, tab focus exit, mobile radio-tab swap, no-JS basic typing. | `src/components/playground/Editor.astro` (NEW), `src/pages/playground/index.astro` |
 
-Remaining (Level 1): sub-task 5 (editor pane — paste handling, textarea, basic markdown), sub-task 6 (settings panel — font/dropCap/hyphenation/measure/lineHeight controls), sub-task 7 (wire `BrowserRenderer` to preview pane), sub-tasks 8–10 (copy-HTML, share-URL, end-to-end test against `the-cheapest-signal`).
+Remaining (Level 1): sub-task 6 (settings panel — font/dropCap/hyphenation/measure/lineHeight controls), sub-task 7 (wire `BrowserRenderer` to preview pane), sub-tasks 8–10 (copy-HTML, share-URL, end-to-end test against `the-cheapest-signal`). Recommended order: **sub-task 7 BEFORE sub-task 6** — settings need both editor and preview to exist; building settings against placeholder preview means building twice; preview against working editor delivers immediate visible value (paste → typeset output) which is the playground's whole pitch. Editorial-writer follow-up for the final invitation copy in the editor stand-in is still pending.
 
 ---
 
@@ -110,6 +111,21 @@ These are deferred items from `NOTES.md` and observations from `.claude/learning
 - `NOTES.md` and `.claude/learnings.md` left in place — referenced from the new context files.
 - `agents.md` and `context/feature-specs/` added; `context/current-issues.md` added (gitignored).
 - Next: write spec 01 for the first post-shipped feature.
+
+### 2026-05-07 — Playground editor pane shipped (sub-task 5)
+- **Sub-task 5 of `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md` shipped.** Replaces the `.placeholder-sample <pre>` from sub-task 4 with an extracted `<Editor />` component (server-rendered `<textarea>` + small hydration `<script>`). The `<section id="playground-editor" …>` wrapper, its CSS, and its mobile radio-tab `:checked` selectors are unchanged.
+- **Question A (component shape):** (b) — extracted to `src/components/playground/Editor.astro`, pairs with future Settings.astro / Preview.astro.
+- **Question B (initial content):** (a) — verbatim re-use of the sub-task 4 stand-in prose; editorial-writer follow-up for the real invitation copy still queued.
+- **Question C (paste):** (c) smart — replaces entire content if `data-stand-in="true"` still set, otherwise inserts at the cursor. Marker cleared on first user `input` event (typing) OR by the paste handler when it does the replace.
+- **Question D (Tab):** (a) default browser behaviour — focus moves off the textarea. Accessibility over markdown nested-list convenience. List-indent (if needed later) is `Cmd-]`/`Cmd-[`, never Tab.
+- **Question E (per-keystroke):** nothing in sub-task 5. The textarea is dumb. Per-keystroke debounced typeset trigger lives in sub-task 7 alongside preview wiring (the contract belongs there, not here).
+- **Resize sub-question:** (i) `resize: vertical` with `min-height: 12rem`, `max-height: 30rem`. Bounded so dragging the handle doesn't break parent layout.
+- **Visual register:** Inter for label + hint chrome (consistent with sub-task 4); system monospace stack (`ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`) for the textarea content. Monospace reads as "this is source you are editing" rather than "writing pad" — matches CodeMirror / GitHub web editor / VS Code convention. Fraunces stays reserved for the preview pane (the editorial product).
+- **Focus state:** `2px solid var(--accent)` outline + `2px` offset + inner `border-color: var(--ink)`. Not browser default blue. Same recipe as the radio-tab focus state from sub-task 4.
+- **JS-disabled safety:** verified — textarea ships with stand-in prose pre-loaded as plain HTML; remains editable; only loses smart-paste (which is a progressive enhancement). All baseline behaviours work without JS.
+- **Headless verification (Playwright):** initial render correct (`data-stand-in="true"`, 423-char prose, ARIA label, `spellcheck="false"`); typing clears stand-in; native paste at cursor position 5 produces `"The cXYZhe…"` (insert, not replace) once stand-in cleared; reload restores stand-in; smart-paste with stand-in active replaces all content with `"REPLACED"` and clears marker; Tab moves focus from textarea to the `<a>` Library link / next focusable; mobile 400px viewport shows radio-tab UI and toggling swaps which pane displays; computed `font-family` is the monospace stack; computed `resize: vertical`, `min-height: 228px (≈12rem)`, `max-height: 570px (≈30rem)`. No console errors.
+- **Build:** clean. Pre-existing `[pilcrow] posts/inline-markup/: unsupported inline element <br> …` warning unchanged.
+- **Recommended next:** **sub-task 7 (preview wired to BrowserRenderer) BEFORE sub-task 6 (settings).** Settings need both editor and preview to exist; building settings against placeholder preview means building twice. Preview against working editor delivers the playground's whole pitch (paste → typeset output) immediately.
 
 ### 2026-05-07 — Playground page shell shipped (sub-task 4)
 - **Sub-task 4 of `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md` shipped.** `/playground/` now resolves to a static shell with three labelled placeholders for editor (sub-task 5), settings (sub-task 6), and preview (sub-task 7). No `BrowserRenderer` import in this page — wiring happens in sub-task 7.

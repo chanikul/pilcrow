@@ -29,6 +29,7 @@
  */
 
 import Base from '../../layouts/Base.astro';
+import Editor from '../../components/playground/Editor.astro';
 ---
 
 <Base title="Pilcrow Playground" chrome="minimal">
@@ -86,21 +87,18 @@ import Base from '../../layouts/Base.astro';
     </div>
 
     <div class="playground-panes">
-      {/* Editor pane — sub-task 5. Plain <textarea> + paste handling.
-          Pre-loaded stand-in below is a marker; final invitation copy
-          is a follow-up editorial-writer task before ship. */}
+      {/* Editor pane — sub-task 5 SHIPPED. The wrapper <section> keeps
+          its id, classes, data-placeholder, and aria-labelledby (the
+          Editor component renders the inner h2#playground-editor-label).
+          The data-placeholder attr stays as a hook for sub-task 7's
+          preview-wiring lookups. */}
       <section
         id="playground-editor"
         class="playground-editor"
         data-placeholder="editor-pane"
         aria-labelledby="playground-editor-label"
       >
-        <h2 id="playground-editor-label" class="placeholder-label">
-          Editor pane — sub-task 5
-        </h2>
-        <p class="placeholder-hint">Markdown input with paste handling. Wired in sub-task 5.</p>
-        <pre class="placeholder-sample" aria-label="Pre-loaded stand-in prose">The cheapest signal a writer can send is the one buried in their type. Set the same paragraph in two faces and the reader feels two different writers — one calmer, one more insistent — without ever naming the difference. Editorial typography is the part of writing that travels under the words, doing its work before the reader knows there was work to do, and Pilcrow exists to put that work back in reach for the open web.</pre>
-        {/* TODO sub-task 5: Editor component */}
+        <Editor />
       </section>
 
       {/* Preview pane — sub-task 7. Renders BrowserRenderer output.
@@ -261,17 +259,10 @@ import Base from '../../layouts/Base.astro';
     margin: 0 0 1rem;
   }
 
-  .placeholder-sample {
-    font-family: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    color: var(--ink);
-    white-space: pre-wrap;
-    margin: 0;
-    padding: 0.75rem;
-    border: 1px dashed var(--rule);
-    background: var(--paper);
-  }
+  /* (`.placeholder-sample` was the editor stand-in <pre> in the sub-task 4
+     shell; sub-task 5 replaced that with the <Editor /> component which
+     owns its own textarea styling. Settings + preview still use
+     `.placeholder-label` and `.placeholder-hint` until sub-tasks 6 + 7. */
 
   /* ─── Mobile fallback (<768px) ───────────────────────────────────────── */
   /* Editor / preview switch via radio tabs; settings stay above as a stacked

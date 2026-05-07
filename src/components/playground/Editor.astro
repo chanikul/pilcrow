@@ -1,0 +1,224 @@
+---
+/**
+ * Pilcrow Playground — Editor pane (sub-task 5 of PILCROW_PLAYGROUND_PLAN.md).
+ *
+ * A plain Markdown <textarea> with progressive-enhancement behaviours wired
+ * via a small client script. The component server-renders a fully-functional
+ * <textarea> first; the script only adds smart-paste handling and stand-in
+ * tracking. With JavaScript disabled the editor still works as basic HTML.
+ *
+ * Why a textarea (not a contenteditable div, not CodeMirror, not Monaco):
+ *   - Pilcrow's input is Markdown source. The user is editing source, not
+ *     reading typeset output. The editor is a TOOL surface, not the editorial
+ *     register. (See sub-task 4's Question E resolution.)
+ *   - Plain <textarea> is keyboard-accessible by default, supports the
+ *     browser's native undo stack, and works on every device with no JS.
+ *   - Markdown syntax highlighting is explicitly out of scope for sub-task 5.
+ *   - No new dependencies — the playground sprint anti-goal forbids them.
+ *
+ * Sub-task 4 originally rendered a `.placeholder-sample <pre>` with the
+ * stand-in prose inside a `<section id="playground-editor" …>` wrapper. This
+ * component replaces only the *contents* of that wrapper — the wrapper's
+ * ID, classes, data-placeholder, and aria-labelledby attributes still live
+ * in the parent `index.astro`. That keeps the existing CSS rules (border,
+ * padding, min-height, mobile radio-tab :checked selectors) working
+ * unchanged.
+ *
+ * Question A resolution (component shape): (b) extracted component, server-
+ * rendered markup + small hydration script. Pairs with Settings.astro (sub-
+ * task 6) and Preview.astro (sub-task 7) in the same directory.
+ *
+ * Question B resolution (initial content): (a) verbatim re-use of the stand-
+ * in prose from sub-task 4. Editorial-writer follow-up for the real
+ * invitation copy is a separately-queued task; not pre-empted here.
+ *
+ * Question C resolution (paste handling): (c) smart — replace if the
+ * stand-in marker is still set, otherwise insert at the cursor. Detected
+ * via the `data-stand-in` attribute, cleared on first user keystroke.
+ *
+ * Question D resolution (Tab key): (a) default browser behaviour. Tab moves
+ * focus to the next element. Accessibility wins over markdown nested-list
+ * convenience. If list-indent matters later, it is Cmd-]/Cmd-[, not Tab.
+ *
+ * Question E resolution (per-keystroke work): nothing in sub-task 5. The
+ * editor is a dumb textarea with paste/tab handling. Per-keystroke event
+ * design (debounced typeset trigger) lives in sub-task 7 alongside the
+ * preview wiring.
+ *
+ * Sub-question (resize): (i) `resize: vertical` with min/max bounds. Lets
+ * the user grow the source area without breaking parent layout.
+ *
+ * Visual register: Inter for the chrome (label, hint); a system monospace
+ * stack for the textarea content. Monospace is the editor convention
+ * (CodeMirror, GitHub web editor, VS Code) — it reads as "this is source
+ * you are editing" rather than "writing pad." Fraunces is reserved for the
+ * preview pane (the editorial product the user is here to see).
+ */
+
+// The stand-in prose is the same paragraph sub-task 4 ships in the shell.
+// Kept verbatim; the editorial-writer follow-up will replace this.
+const STAND_IN_PROSE =
+  "The cheapest signal a writer can send is the one buried in their type. " +
+  "Set the same paragraph in two faces and the reader feels two different " +
+  "writers — one calmer, one more insistent — without ever naming the " +
+  "difference. Editorial typography is the part of writing that travels " +
+  "under the words, doing its work before the reader knows there was work " +
+  "to do, and Pilcrow exists to put that work back in reach for the open web.";
+---
+
+<h2 id="playground-editor-label" class="editor-label">Editor</h2>
+<p class="editor-hint">Markdown in. Paste anything — typeset preview lands in sub-task 7.</p>
+<textarea
+  id="playground-editor-textarea"
+  class="editor-textarea"
+  aria-labelledby="playground-editor-label"
+  spellcheck="false"
+  autocomplete="off"
+  autocapitalize="off"
+  autocorrect="off"
+  data-stand-in="true"
+>{STAND_IN_PROSE}</textarea>
+
+<script>
+  /**
+   * Editor hydration — smart-paste + stand-in tracking only.
+   *
+   * Runs after DOMContentLoaded (Astro's default `<script>` is a bare module
+   * in the document body, so it fires once parsing reaches it). The textarea
+   * still works without this script — paste pastes (replacing selection),
+   * Tab tabs out, typing types. The script only refines paste behaviour.
+   */
+  const textarea = document.getElementById(
+    'playground-editor-textarea',
+  ) as HTMLTextAreaElement | null;
+
+  if (textarea) {
+    // The textarea starts with `data-stand-in="true"`. Cleared on the first
+    // user keystroke (input event). Once cleared, paste behaviour switches
+    // from "replace entire content" to "insert at cursor."
+    const clearStandIn = (): void => {
+      if (textarea.dataset.standIn === 'true') {
+        delete textarea.dataset.standIn;
+      }
+    };
+
+    // Any non-paste user input clears the marker. We listen for `input`
+    // (covers typing, deletion, cut, drag-drop, IME composition end) but
+    // NOT for paste — the paste handler owns its own transition logic.
+    textarea.addEventListener('input', (event) => {
+      // The paste handler dispatches an `input` event after it mutates the
+      // value; ignore those by checking inputType. Manual typing reports
+      // inputTypes like 'insertText', 'deleteContentBackward', etc.
+      if ((event as InputEvent).inputType === 'insertFromPaste') return;
+      clearStandIn();
+    });
+
+    /**
+     * Paste handler — Question C smart paste:
+     *   - If stand-in marker still set → replace entire content
+     *   - Otherwise → insert at the current cursor position (browser default)
+     *
+     * For "replace entire content" we preventDefault + manually set the
+     * value; this also gives us deterministic cursor placement at the end.
+     * For "insert at cursor" we let the browser handle it natively (the
+     * default behaviour is exactly insert-at-selection, which is what we
+     * want).
+     */
+    textarea.addEventListener('paste', (event) => {
+      if (textarea.dataset.standIn !== 'true') {
+        // Stand-in already cleared — let native paste behaviour run.
+        return;
+      }
+      // Stand-in still active: replace entire content with pasted text.
+      const clipboardData = event.clipboardData;
+      if (!clipboardData) return;
+      const pasted = clipboardData.getData('text/plain');
+      if (!pasted) return;
+
+      event.preventDefault();
+      textarea.value = pasted;
+      // Cursor at the end of pasted content.
+      textarea.setSelectionRange(pasted.length, pasted.length);
+      // Mark stand-in cleared so subsequent pastes use native cursor insert.
+      delete textarea.dataset.standIn;
+      // Notify any listener (sub-task 7 will hook this) that content changed.
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+</script>
+
+<style>
+  /* The h2 label uses the same `placeholder-label` typographic recipe as
+     the surrounding shell (Inter, small caps via uppercase + tracking,
+     muted colour). Defined locally so this component is self-contained
+     and doesn't depend on a class defined in `index.astro`. */
+  .editor-label {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+  }
+
+  .editor-hint {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    line-height: 1.5;
+    margin: 0 0 1rem;
+  }
+
+  /* The textarea — system monospace, Pilcrow palette only. The 1px dashed
+     rule echoes the placeholder-sample from sub-task 4 (consistency with
+     the shell during the interim sprint), but the rule colour will likely
+     fold into a solid border once sub-task 6 lands and the surrounding
+     surfaces stabilise. */
+  .editor-textarea {
+    /* Type — monospace stack reads as editor surface (vs. writing pad).
+       The font-family list mirrors GitHub's editor stack. */
+    font-family:
+      ui-monospace,
+      'SF Mono',
+      Menlo,
+      Monaco,
+      Consolas,
+      'Liberation Mono',
+      'Courier New',
+      monospace;
+    font-size: 0.875rem;
+    line-height: 1.55;
+
+    /* Surface — paper background, ink text, dashed rule. */
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px dashed var(--rule);
+    padding: 0.75rem;
+
+    /* Layout — fill the pane width; bounded vertical resize. The min-height
+       roughly matches the .placeholder-sample height in the previous shell
+       so the layout doesn't visibly jump when this component lands. The
+       max-height prevents a user from dragging the handle into a layout
+       that scrolls the whole page awkwardly. */
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 12rem;
+    max-height: 30rem;
+    resize: vertical;
+
+    /* No outer margin — parent .playground-editor padding (1.25rem from
+       index.astro) provides the inset. */
+    margin: 0;
+  }
+
+  /* Visible focus state — accent ring, not browser default blue. Same
+     pattern as the radio-tab focus state in index.astro: 2px solid
+     var(--accent) outline + 2px offset. */
+  .editor-textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-color: var(--ink);
+  }
+</style>
