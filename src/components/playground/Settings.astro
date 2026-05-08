@@ -223,23 +223,33 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       </div>
     </fieldset>
 
-    {/* ─── Copy-HTML action (sub-task 8) ──────────────────────────────────
-        Tool affordance, not a CTA. Inter chrome register; subdued border
-        like the stepper / swatch surfaces. Click reads the live preview
-        host, wraps it in a self-contained HTML document with inlined
-        font-face for the current font, and writes to clipboard. Pure
-        button — JS-disabled fallback is a visible no-op (layout stable). */}
+    {/* ─── Copy-HTML + Share actions (sub-tasks 8 + 9) ────────────────────
+        Two tool affordances in the same cell. Inter chrome register;
+        subdued border like the stepper / swatch surfaces. Both buttons
+        are JS-disabled no-ops (layout stable). Share encodes settings +
+        markdown into a URL hash via lz-string (sub-task 9). */}
     <div class="settings-control settings-control-action">
       <span class="settings-legend" id="copy-html-legend">Output</span>
-      <button
-        type="button"
-        class="copy-html-button"
-        data-copy-html
-        aria-labelledby="copy-html-legend"
-        aria-live="polite"
-      >
-        <span data-copy-html-label>Copy HTML</span>
-      </button>
+      <div class="action-buttons">
+        <button
+          type="button"
+          class="copy-html-button"
+          data-copy-html
+          aria-labelledby="copy-html-legend"
+          aria-live="polite"
+        >
+          <span data-copy-html-label>Copy HTML</span>
+        </button>
+        <button
+          type="button"
+          class="copy-html-button share-button"
+          data-share-url
+          aria-live="polite"
+          aria-label="Share playground state as URL"
+        >
+          <span data-share-url-label>Share</span>
+        </button>
+      </div>
     </div>
   </div>
 </form>
@@ -247,7 +257,7 @@ const DEFAULT_LINE_HEIGHT = 1.55;
 <script>
   /**
    * Settings hydration — wires the swatches/toggles/steppers to the event
-   * contract that Preview.astro (and future copy-HTML / share-URL components)
+   * contract that Preview.astro (and copy-HTML / share-URL components)
    * consume. JS-disabled users get a labelled, focusable form that does
    * nothing — by design.
    *
@@ -793,6 +803,82 @@ const DEFAULT_LINE_HEIGHT = 1.55;
         }
       });
     }
+
+    // ─── Share-URL action (sub-task 9) ──────────────────────────────────
+    // Encodes the current playground state (settings + markdown) into the
+    // URL hash via lz-string. The encoded hash is written to clipboard
+    // (same pattern as copy-HTML). URL update: ONLY on Share button click —
+    // not on every keystroke or settings change (avoids browser-history
+    // pollution). The `source: 'restore'` event contract is handled in
+    // index.astro's page-load script, which reads the hash and dispatches.
+    //
+    // Long-URL degradation: if the encoded hash exceeds SHARE_URL_LONG_THRESHOLD
+    // characters, the feedback label becomes "Copied — long URL" instead of
+    // "Copied!" so the user knows some sharing surfaces may truncate.
+    // No modal, no blocking error — silent degradation per Pilcrow restraint.
+    const shareButton = document.querySelector<HTMLButtonElement>(
+      '[data-share-url]',
+    );
+    const shareLabel = document.querySelector<HTMLSpanElement>(
+      '[data-share-url-label]',
+    );
+
+    if (shareButton && shareLabel) {
+      const SHARE_REVERT_MS = 1500;
+      let shareRevertTimer: number | null = null;
+      const setShareLabel = (text: string): void => {
+        shareLabel.textContent = text;
+      };
+      const scheduleShareRevert = (): void => {
+        if (shareRevertTimer !== null) window.clearTimeout(shareRevertTimer);
+        shareRevertTimer = window.setTimeout(() => {
+          setShareLabel('Share');
+          shareButton.removeAttribute('data-state');
+          shareRevertTimer = null;
+        }, SHARE_REVERT_MS);
+      };
+
+      shareButton.addEventListener('click', async () => {
+        // Read current markdown from the textarea.
+        const textarea = document.getElementById(
+          'playground-editor-textarea',
+        ) as HTMLTextAreaElement | null;
+        const markdown = textarea?.value ?? '';
+
+        // Read current settings from window mirror or DOM.
+        const settings: PlaygroundSettings =
+          (window as PlaygroundWindow).__pilcrowSettings ?? readSettings();
+
+        // Import encode helpers dynamically — keeps the initial script
+        // bundle lean (the lz-string module is only needed on Share click).
+        const { encodeShareURL, SHARE_URL_LONG_THRESHOLD } = await import(
+          '../../lib/playground/share-url.ts'
+        );
+
+        const hash = encodeShareURL({ settings, markdown });
+
+        // Write hash to window.location.hash BEFORE writing to clipboard
+        // so the clipboard gets the fully-qualified URL with the hash.
+        window.location.hash = hash.slice(1); // hash without the leading '#'
+        const shareURL = window.location.href;
+
+        const isLong = hash.length > SHARE_URL_LONG_THRESHOLD;
+
+        try {
+          await navigator.clipboard.writeText(shareURL);
+          setShareLabel(isLong ? 'Copied — long URL' : 'Copied!');
+          shareButton.setAttribute('data-state', isLong ? 'warn' : 'success');
+          scheduleShareRevert();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[pilcrow:share-url] clipboard write failed:', err);
+          // Even if clipboard fails, the hash is in the address bar.
+          setShareLabel('URL updated');
+          shareButton.setAttribute('data-state', 'success');
+          scheduleShareRevert();
+        }
+      });
+    }
   }
 </script>
 
@@ -1022,10 +1108,20 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     outline-offset: 2px;
   }
 
-  /* ─── Copy-HTML action ──────────────────────────────────────────────────
+  /* ─── Action button group (copy-HTML + share) ────────────────────────
+     Two buttons side-by-side in the action cell. No gap between them —
+     they read as a single compound control, each with a 1px border. */
+  .action-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  /* ─── Copy-HTML / Share action ───────────────────────────────────────
      Tool affordance, NOT a CTA. Inter chrome register, ruled border like
      the stepper / swatch surfaces, accent on hover. The label swap to
-     "Copied!" is the entire success feedback — no toast, no modal. */
+     "Copied!" / "Copied — long URL" is the entire success feedback — no
+     toast, no modal. */
   .copy-html-button {
     display: inline-flex;
     align-items: center;
@@ -1042,9 +1138,15 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     /* Reset button defaults that drift visual register otherwise. */
     line-height: 1.2;
     transition: border-color 120ms ease, color 120ms ease;
-    /* Reserve enough width that the "Copied!" / "Copy failed" labels don't
-       cause the chrome row to reflow when the label swaps. */
-    min-width: 9rem;
+    /* Reserve enough width that label swaps ("Copied!", "Copy failed — see
+       console") don't cause the chrome row to reflow. */
+    min-width: 8rem;
+  }
+
+  /* The share button has a longer max label ("Copied — long URL") so it
+     needs a wider min-width to avoid reflow on label swap. */
+  .share-button {
+    min-width: 10rem;
   }
 
   .copy-html-button:hover {
@@ -1057,9 +1159,11 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     outline-offset: 2px;
   }
 
-  /* Success / error states — quiet, no colour change beyond the accent
-     border so the feedback doesn't shout. The label text carries the
-     signal; the border carries the confirmation. */
+  /* Success / error / warn states — quiet, no colour change beyond the
+     accent border so the feedback doesn't shout. The label text carries
+     the signal; the border carries the confirmation. 'warn' (long URL)
+     uses the muted colour — slightly subdued vs. success, acknowledges
+     the caveat without alarming the user. */
   .copy-html-button[data-state='success'] {
     border-color: var(--accent);
     color: var(--accent);
@@ -1068,6 +1172,11 @@ const DEFAULT_LINE_HEIGHT = 1.55;
   .copy-html-button[data-state='error'] {
     border-color: var(--ink);
     color: var(--ink);
+  }
+
+  .copy-html-button[data-state='warn'] {
+    border-color: var(--muted);
+    color: var(--muted);
   }
 
   /* ─── Mobile (<768px) — vertical stack, horizontal-scroll swatches ────── */
@@ -1101,16 +1210,20 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       flex: 1;
     }
 
-    /* On mobile the action cell sits as its own row in the stack. Push the
-       button to span the full width so it reads as a deliberate trailing
-       control rather than a small right-floating button. */
+    /* On mobile the action cell sits as its own row in the stack. The
+       action-buttons flex container stacks horizontally; each button
+       expands equally. */
     .settings-control-action {
       justify-self: stretch;
       text-align: left;
     }
 
-    .copy-html-button {
+    .action-buttons {
       width: 100%;
+    }
+
+    .copy-html-button {
+      flex: 1;
     }
   }
 </style>

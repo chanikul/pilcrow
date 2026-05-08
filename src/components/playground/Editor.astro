@@ -110,14 +110,18 @@ const STAND_IN_PROSE =
   ) as HTMLTextAreaElement | null;
 
   if (textarea) {
-    // ─── Sub-task 7: event contract ──────────────────────────────────────
+    // ─── Sub-task 7 + 9: event contract ────────────────────────────────────
     // Dispatch `pilcrow:editor-changed` CustomEvents on `document` so any
-    // listener (Preview, future Settings, future ShareUrl) can react. The
-    // contract is the detail shape, not a shared bus. See the file header
-    // for the verbatim CustomEventInit type.
+    // listener (Preview, Settings, share-URL restore) can react. The
+    // contract is the detail shape, not a shared bus.
+    //
+    // Sub-task 9 extends the source type with 'restore' — used when the
+    // page-load script decodes a share URL hash and replays state. Consumers
+    // listening for source === 'restore' know NOT to echo state back into
+    // the URL or dispatch derived events (avoids feedback loops).
     interface EditorChangedDetail {
       markdown: string;
-      source: 'paste' | 'keystroke' | 'init';
+      source: 'paste' | 'keystroke' | 'init' | 'restore';
     }
     const dispatchChanged = (source: EditorChangedDetail['source']): void => {
       const event = new CustomEvent<EditorChangedDetail>(

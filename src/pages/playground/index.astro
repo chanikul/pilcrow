@@ -32,6 +32,30 @@ import Base from '../../layouts/Base.astro';
 import Editor from '../../components/playground/Editor.astro';
 import Preview from '../../components/playground/Preview.astro';
 import Settings from '../../components/playground/Settings.astro';
+
+/**
+ * Sub-task 9 — share-URL state restoration.
+ *
+ * The page-load restoration script (in the <script> block below) runs as
+ * an Astro deferred ES module, which means it executes in document order
+ * after DOMContentLoaded — BEFORE Settings.astro's hydration script fires
+ * its setTimeout(0) init dispatch. This ordering is critical:
+ *
+ *   1. This script: parse hash → mutate form DOM → update textarea value.
+ *   2. Settings.astro's readSettings() reads the MUTATED DOM → dispatches
+ *      pilcrow:settings-changed with { source: 'init', settings: <restored> }.
+ *   3. Editor.astro: textarea already has restored markdown; its init
+ *      dispatch fires with source: 'init' (no explicit init dispatch exists
+ *      in Editor — the editor only dispatches on user input).
+ *   4. Preview.astro: receives settings-changed (restored state) and runs
+ *      typeset with the restored markdown.
+ *
+ * The 'restore' source is used on the explicit editor-changed dispatch so
+ * that consumers can distinguish "replaying share-URL state" from a user
+ * typing keystroke or paste. Settings.astro doesn't need a restore dispatch
+ * because the DOM mutation + readSettings() path carries the state without
+ * an explicit event.
+ */
 ---
 
 <Base title="Pilcrow Playground" chrome="minimal">
@@ -305,3 +329,144 @@ import Settings from '../../components/playground/Settings.astro';
     padding-top: 2.5rem;
   }
 </style>
+
+<script>
+  /**
+   * Sub-task 9 — share-URL state restoration on page load.
+   *
+   * Runs as a deferred ES module. Executes BEFORE Settings.astro's
+   * hydration script fires its setTimeout(0) init dispatch (document order
+   * guarantees this: index.astro's <script> appears earlier in the DOM).
+   *
+   * Strategy:
+   *   1. Parse window.location.hash.
+   *   2. If valid v1 share hash: decode via share-url.ts helpers.
+   *   3. Mutate the Settings form DOM so readSettings() in Settings.astro
+   *      returns the restored state (not the SSR defaults) when its
+   *      setTimeout(0) init dispatch fires.
+   *   4. Set the editor textarea value + clear data-stand-in.
+   *   5. Dispatch pilcrow:editor-changed with { source: 'restore' } so
+   *      Preview.astro's latestMarkdown is updated before the first typeset.
+   *   6. On any decode failure (malformed hash, version mismatch, etc.):
+   *      console.warn + silent fallback to default state.
+   *
+   * No feedback loop: this script mutates DOM and dispatches one event.
+   * Settings.astro's init dispatch reads the mutated DOM and dispatches
+   * source: 'init' — that's the only settings event. The restore path
+   * does NOT dispatch pilcrow:settings-changed; it lets Settings.astro's
+   * normal init path carry the restored values.
+   *
+   * JS-disabled: this script doesn't run; page renders with default state.
+   * Not a regression — the playground already requires JS.
+   */
+
+  import { decodeShareURL } from '../../lib/playground/share-url.ts';
+
+  interface PlaygroundSettings {
+    font: string;
+    dropCap: boolean;
+    hyphenation: boolean;
+    measure: number;
+    lineHeight: number;
+  }
+
+  interface PlaygroundWindow extends Window {
+    __pilcrowSettings?: PlaygroundSettings;
+  }
+
+  interface EditorChangedDetail {
+    markdown: string;
+    source: 'paste' | 'keystroke' | 'init' | 'restore';
+  }
+
+  /**
+   * Apply restored settings to the Settings form DOM so that
+   * Settings.astro's readSettings() returns the correct state.
+   */
+  const applySettingsToDOM = (settings: PlaygroundSettings): void => {
+    const form = document.querySelector<HTMLFormElement>('[data-settings-form]');
+    if (!form) return;
+
+    // ── Font swatches ──────────────────────────────────────────────────────
+    const swatches = form.querySelectorAll<HTMLButtonElement>('.font-swatch');
+    for (const swatch of swatches) {
+      const isTarget = swatch.dataset.font === settings.font;
+      swatch.setAttribute('aria-checked', isTarget ? 'true' : 'false');
+    }
+
+    // ── Drop-cap toggle ────────────────────────────────────────────────────
+    const dropCapInput = form.querySelector<HTMLInputElement>('[data-drop-cap]');
+    if (dropCapInput) {
+      dropCapInput.checked = settings.dropCap;
+    }
+
+    // ── Hyphenation toggle ─────────────────────────────────────────────────
+    const hyphenationInput = form.querySelector<HTMLInputElement>('[data-hyphenation]');
+    if (hyphenationInput) {
+      hyphenationInput.checked = settings.hyphenation;
+    }
+
+    // ── Measure stepper ────────────────────────────────────────────────────
+    const measureInputs = form.querySelectorAll<HTMLInputElement>('[data-measure]');
+    for (const input of measureInputs) {
+      input.checked = Number(input.value) === settings.measure;
+    }
+
+    // ── Line-height stepper ────────────────────────────────────────────────
+    const lineHeightInputs = form.querySelectorAll<HTMLInputElement>('[data-line-height]');
+    for (const input of lineHeightInputs) {
+      input.checked = Number(input.value) === settings.lineHeight;
+    }
+
+    // ── Mirror to window so Preview.astro's late-attach recovery works ─────
+    (window as PlaygroundWindow).__pilcrowSettings = settings;
+  };
+
+  /**
+   * Apply restored markdown to the editor textarea.
+   */
+  const applyMarkdownToEditor = (markdown: string): void => {
+    const textarea = document.getElementById(
+      'playground-editor-textarea',
+    ) as HTMLTextAreaElement | null;
+    if (!textarea) return;
+
+    textarea.value = markdown;
+    // Clear the stand-in marker — the content is restored, not the default.
+    delete (textarea.dataset as DOMStringMap & Record<string, string>)['standIn'];
+
+    // Dispatch pilcrow:editor-changed with source: 'restore' so Preview.astro
+    // updates latestMarkdown before the first typeset runs. Use setTimeout(0)
+    // to match Settings.astro's init-dispatch timing — both land in the same
+    // event loop turn, and Preview.astro will have attached its listener by
+    // then (its script body runs synchronously before any setTimeout callbacks).
+    setTimeout(() => {
+      const event = new CustomEvent<EditorChangedDetail>('pilcrow:editor-changed', {
+        detail: { markdown, source: 'restore' },
+        bubbles: true,
+      });
+      document.dispatchEvent(event);
+    }, 0);
+  };
+
+  // ─── Main restore logic ──────────────────────────────────────────────────
+
+  const hash = window.location.hash;
+  if (hash && hash.startsWith('#v1.')) {
+    const decoded = decodeShareURL(hash);
+    if (decoded !== null) {
+      // Apply settings to DOM first, then markdown (so the editor textarea
+      // has the restored content before any keystroke events could fire).
+      applySettingsToDOM(decoded.settings);
+      applyMarkdownToEditor(decoded.markdown);
+    } else {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[pilcrow:share-url] Failed to decode share URL hash — falling back to defaults.',
+        'Hash:', hash.slice(0, 40) + (hash.length > 40 ? '…' : ''),
+      );
+    }
+  }
+  // If no hash or unrecognised prefix: page renders with default state.
+  // Silently no-op — no console warning for a normal fresh-load.
+</script>

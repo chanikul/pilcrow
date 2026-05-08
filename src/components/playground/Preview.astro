@@ -164,9 +164,14 @@ const STAND_IN_PROSE =
   import rehypeStringify from 'rehype-stringify';
 
   // ─── Event contracts — typed surface for sub-tasks 6/8/9 ────────────────
+  // 'restore' added in sub-task 9 — dispatched when page-load script
+  // decodes a share URL hash and replays state. Preview treats it like any
+  // other content update (just runs typeset). The no-feedback-loop contract
+  // lives in Settings.astro's swatch click handler, which is guarded by
+  // source === 'restore' not re-dispatching a settings-changed event.
   interface EditorChangedDetail {
     markdown: string;
-    source: 'paste' | 'keystroke' | 'init';
+    source: 'paste' | 'keystroke' | 'init' | 'restore';
   }
 
   interface PlaygroundSettings {
