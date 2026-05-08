@@ -58,18 +58,44 @@ const __dirname = dirname(__filename);
 const GLOBAL_CSS_PATH = resolve(__dirname, '../../../public/styles/global.css');
 
 /**
+ * Strip CSS block comments (`/* ... *\/`) from a source string.
+ *
+ * Comments in CSS can contain example rule fragments (e.g. `body { font-family:
+ * "Fraunces" ... }` in a documentation comment) that look identical to real
+ * rules to a regex-based extractor. Without stripping, `extractCSSProp` may
+ * match those example blocks first, returning gibberish values and breaking
+ * the loaderHTML's measurement context. (Discovered 2026-05-08 — the build-
+ * time canvas was silently measuring against Times because a documentation
+ * comment shadowed the real `body { font-family }` rule.)
+ *
+ * This is intentionally simple: regex strip of `/* ... *\/` non-greedy across
+ * lines. Works for all comments in `public/styles/global.css` because the file
+ * uses no nested comments and contains no string literals with the `/​*` /​ `*​/`
+ * sequence (those would be inside `content: "…"` or `url("…")` and CSS doesn't
+ * allow them in those contexts as comment markers anyway).
+ */
+function stripCSSComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
+/**
  * Extract a single CSS property value from a CSS source string given a selector
  * and property name. Returns null when not found.
  * Handles both `selector { ... prop: value; ... }` forms.
+ *
+ * Comments in the source are stripped before matching to prevent example rule
+ * fragments inside docstrings from shadowing real rules — see stripCSSComments
+ * docblock.
  */
 function extractCSSProp(css: string, selector: string, prop: string): string | null {
+  const cssNoComments = stripCSSComments(css);
   // Escape special regex characters in the selector.
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Match the rule block for that selector (greedy-safe via non-greedy inner match).
   // Use the 's' (dotAll) flag so block contents match across newlines.
   const blockRe = new RegExp(`${escapedSelector}\\s*\\{([\\s\\S]+?)\\}`, 'g');
   let match: RegExpExecArray | null;
-  while ((match = blockRe.exec(css)) !== null) {
+  while ((match = blockRe.exec(cssNoComments)) !== null) {
     const block = match[1]!;
     // Match the property inside the block.
     const propRe = new RegExp(`(?:^|;)\\s*${prop.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*([^;]+)`, 'm');
