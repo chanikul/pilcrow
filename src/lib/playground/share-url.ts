@@ -12,10 +12,15 @@
  * Compression: lz-string.compressToEncodedURIComponent (MIT, ~5 KB,
  *   designed exactly for URL-hash storage — output is URI-safe base64).
  *
- * URL-length threshold: 2000 chars. Realistic 500-word posts (~3 KB raw
- * markdown) compress to ~750–1000 bytes, well under this. If the encoded
- * hash DOES exceed 2000 chars, the Share button reports "Copied — long URL"
- * rather than "Copied!" — silent degradation, no blocking error.
+ * URL-length threshold: 4000 chars. lz-string compression on prose runs
+ * ~80% (not the gzip-equivalent ~25–33% assumed during planning), so a
+ * 500-word post (~3 KB raw) encodes to ~2285 chars — comfortably under.
+ * Twitter handles ~10K-char URLs; Slack, Discord, email, Reddit, and
+ * GitHub all handle 4000+ without truncation. Below 4000 the URL works
+ * everywhere; above 4000 the warning is load-bearing, not noise.
+ * If the encoded hash DOES exceed 4000 chars, the Share button reports
+ * "Copied — long URL" rather than "Copied!" — silent degradation, no
+ * blocking error.
  *
  * JS-disabled: Share button is a visible no-op. Page with hash present
  * and JS disabled renders with default state — not a regression since the
@@ -41,7 +46,7 @@ export interface SharePayload {
 const VERSION_PREFIX = 'v1.';
 
 /** URL hash length beyond which we warn the user (some sharing surfaces truncate). */
-export const SHARE_URL_LONG_THRESHOLD = 2000;
+export const SHARE_URL_LONG_THRESHOLD = 4000;
 
 /**
  * Encode `settings + markdown` into a URL hash string.

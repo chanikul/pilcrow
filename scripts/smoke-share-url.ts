@@ -135,13 +135,19 @@ assert(
 // ─── Test 2: URL-length check ──────────────────────────────────────────────
 //
 // lz-string achieves ~80% compression on natural-language prose markdown
-// (confirmed empirically: 3KB raw → ~2.5KB encoded hash). This is less than
-// the 75-1000 byte target in the plan, which assumed a higher ratio.
-// Reality: for a 500-word post, the hash will exceed the 2000-char threshold,
-// which is FINE — the threshold triggers a "Copied — long URL" label change
-// (silent degradation). What matters is: (a) compression is working, i.e.
-// the hash is substantially shorter than the raw JSON, and (b) the threshold
-// detection works correctly.
+// (confirmed empirically: 3KB raw → ~2.5KB encoded hash). The plan assumed
+// a gzip-equivalent ~25–33% ratio which was over-optimistic; the real ratio
+// means a 500-word post encodes to ~2285 chars.
+//
+// Threshold is now 4000 chars (raised from the initial 2000). Twitter
+// handles ~10K-char URLs; Slack, Discord, email, Reddit, GitHub all handle
+// 4000+ without truncation. Below 4000 the URL works everywhere; above 4000
+// the warning is load-bearing information, not noise.
+//
+// What matters: (a) compression works — hash is shorter than raw JSON,
+// (b) 500-word post stays UNDER the 4000-char threshold (no false warning),
+// (c) a large sample (>3000-word prose) pushes the hash OVER 4000 (warning
+// still fires when it matters).
 
 console.log('\n2. URL-length encoding sanity check (500-word post)');
 const rawJSON = JSON.stringify(SAMPLE_PAYLOAD);
@@ -155,12 +161,12 @@ assert(
   hashBody.length < rawJSON.length,
   `Compressed hash body (${hashBody.length}) shorter than raw JSON (${rawJSON.length})`,
 );
-// Threshold detection: report whether this sample triggers "long URL" mode.
+// 500-word post must stay UNDER the 4000-char threshold (no false warning).
 const isLong = encoded.length > SHARE_URL_LONG_THRESHOLD;
-console.log(`   Long-URL mode triggered: ${isLong} (expected for 500-word posts — see spec)`);
+console.log(`   Long-URL mode triggered: ${isLong} (should be false for 500-word post)`);
 assert(
-  isLong === (encoded.length > SHARE_URL_LONG_THRESHOLD),
-  `Long-URL detection logic consistent`,
+  !isLong,
+  `500-word post (${encoded.length} chars) stays under ${SHARE_URL_LONG_THRESHOLD}-char threshold`,
 );
 // Short settings-only payload should stay well under threshold.
 const shortPayload = { settings: SAMPLE_SETTINGS, markdown: 'Hello, world.' };
@@ -168,6 +174,31 @@ const shortEncoded = encodeShareURL(shortPayload);
 assert(
   shortEncoded.length < SHARE_URL_LONG_THRESHOLD,
   `Short payload (${shortEncoded.length}) stays under threshold — no "long URL" warning`,
+);
+
+// ─── Test 2b: Large sample triggers warning above 4000 chars ──────────────
+//
+// Repeat SAMPLE_MARKDOWN ~7x to produce a ~3000-word post. At ~80%
+// compression, the encoded hash should exceed 4000 chars, confirming the
+// warning still fires for genuinely long shares.
+
+console.log('\n2b. Long post triggers warning above 4000 chars (~3000-word post)');
+const LARGE_MARKDOWN = Array(7).fill(SAMPLE_MARKDOWN).join('\n\n---\n\n');
+const largePayload: SharePayload = { settings: SAMPLE_SETTINGS, markdown: LARGE_MARKDOWN };
+const largeEncoded = encodeShareURL(largePayload);
+const largeRawJSON = JSON.stringify(largePayload);
+console.log(`   Raw JSON: ${largeRawJSON.length} chars`);
+console.log(`   Encoded hash (incl. #v1.): ${largeEncoded.length} chars`);
+console.log(`   Long-URL mode triggered: ${largeEncoded.length > SHARE_URL_LONG_THRESHOLD}`);
+assert(
+  largeEncoded.length > SHARE_URL_LONG_THRESHOLD,
+  `~3000-word post (${largeEncoded.length} chars) exceeds ${SHARE_URL_LONG_THRESHOLD}-char threshold — warning fires`,
+);
+// Round-trip must still work for large payloads.
+const largeDecoded = decodeShareURL(largeEncoded);
+assert(
+  largeDecoded !== null && largeDecoded.markdown === LARGE_MARKDOWN,
+  `Large payload round-trips losslessly`,
 );
 
 // ─── Test 3: Malformed inputs return null ──────────────────────────────────
