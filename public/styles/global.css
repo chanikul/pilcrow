@@ -435,6 +435,8 @@ code {
  * pre-broken line structure is invisible to the browser. */
 .pt-line {
   display: block;
+  white-space: nowrap;     /* prevent re-wrapping of pre-broken lines at reader-time */
+  overflow-wrap: anywhere; /* defensive: allow break if an unbreakable token exceeds column */
 }
 
 /* Drop cap — lede paragraph first letter.
