@@ -71,7 +71,7 @@
 
 ## Upstream pretext: softHyphenMode strict (RESOLVED — awaiting npm release)
 
-Filed 2026-04-30 as https://github.com/chenglou/pretext/issues/162. **Fix landed upstream 2026-05-09 as commit `f06fef0`; awaiting an npm release of `@chenglou/pretext` containing it.** Future commentary belongs on the GitHub thread, not in this file.
+Filed 2026-04-30 as https://github.com/chenglou/pretext/issues/162. **Fix landed upstream 2026-05-08 as commit `f06fef0` — shipped as a default-behaviour change, not the opt-in `softHyphenMode: 'strict'` flag the issue proposed (post-SHY grapheme packing removed unconditionally). Awaiting an npm release of `@chenglou/pretext` containing it.** Future commentary belongs on the GitHub thread, not in this file.
 
 [Original draft body, preserved as filed:]
 
@@ -124,11 +124,11 @@ Happy to contribute the upstream PR if helpful.
 
 - [2026-04-30] **Case 2 regex widened from `{1,3}` to `{1,7}`.** The original cap missed packed-grapheme suffixes of 4+ chars (e.g. `con-strai` from `constraint`, surfaced in the sidenotes post critic review). Future widenings beyond `{1,7}` should be treated as a heuristic running out of road — at that suffix length the right move is `/review` to characterise root cause, not another bump; the upstream `softHyphenMode: 'strict'` fix (issue #162) remains the correct structural resolution.
 
-- [2026-04-30] **Literal-hyphen blind spot in Case 1 detection — mitigated locally.** Case 1 fires on any line ending with a visible `-`, but cannot distinguish a U+00AD soft-hyphen break (recoverable) from a literal U+002D in a compound word such as `drop-cap`, `well-being`, or `multi-script` (structural, editorially acceptable). When the recovery loop encountered a compound-word line-end it would strip all SHYs in the paragraph and emit a spurious "unrecoverable" warning. Fixed: `findOrphanSHYPos` now checks the source text for both `stem + U+00AD` (SHY-induced, strip it) and `stem + '-'` (literal hyphen, return `LITERAL_HYPHEN_BREAK`). Both `guardFlat` and `guardRich` accept the layout as-is on that sentinel without warning. This is one of several local mitigations for pretext's grapheme-aware (not syllable-aware) line-breaking semantics; the upstream `softHyphenMode: 'strict'` fix (issue #162, fix landed 2026-05-09 as commit `f06fef0`) will subsume this and the rest of the orphan-guard wrapper once the npm release ships. Pilcrow's wrapper is acknowledged technical debt; removal is tracked as candidate spec 9 in `context/06-progress-tracker.md`.
+- [2026-04-30] **Literal-hyphen blind spot in Case 1 detection — mitigated locally.** Case 1 fires on any line ending with a visible `-`, but cannot distinguish a U+00AD soft-hyphen break (recoverable) from a literal U+002D in a compound word such as `drop-cap`, `well-being`, or `multi-script` (structural, editorially acceptable). When the recovery loop encountered a compound-word line-end it would strip all SHYs in the paragraph and emit a spurious "unrecoverable" warning. Fixed: `findOrphanSHYPos` now checks the source text for both `stem + U+00AD` (SHY-induced, strip it) and `stem + '-'` (literal hyphen, return `LITERAL_HYPHEN_BREAK`). Both `guardFlat` and `guardRich` accept the layout as-is on that sentinel without warning. This is one of several local mitigations for pretext's grapheme-aware (not syllable-aware) line-breaking semantics; the upstream fix (issue #162, fix landed 2026-05-08 as commit `f06fef0` — default-behaviour change keeping soft-hyphen breaks at the insertion point, not the opt-in `softHyphenMode: 'strict'` flag the issue proposed) will subsume this and the rest of the orphan-guard wrapper once the npm release ships. Pilcrow's wrapper is acknowledged technical debt; removal is tracked as candidate spec 9 in `context/06-progress-tracker.md`.
 
 ---
 
-## Packed-grapheme aesthetic findings — catalogue for issue #162 (fix landed 2026-05-09)
+## Packed-grapheme aesthetic findings — catalogue for issue #162 (fix landed 2026-05-08)
 
 The orphan-guard wrapper enforces `rightmin: 3` on the post-SHY residual and now catches packed-grapheme suffixes of 1–7 chars (regex `{1,7}` after the 2026-04-30 widening). It does not enforce *aesthetic* quality on the suffix itself. When pretext's `continueSoftHyphenBreakableSegment` packs 1–2 graphemes onto the SHY line and the next-line residual is ≥ 3, the guard correctly stays silent — but the visible line-end can still read awkwardly because the suffix is not a syllable boundary the eye expects.
 
