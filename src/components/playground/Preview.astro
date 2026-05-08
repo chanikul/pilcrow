@@ -156,6 +156,12 @@ const STAND_IN_PROSE =
    */
 
   import { BrowserRenderer } from '../../lib/playground/browser-renderer.ts';
+  import { unified } from 'unified';
+  import remarkParse from 'remark-parse';
+  import remarkGfm from 'remark-gfm';
+  import remarkSmartypants from 'remark-smartypants';
+  import remarkRehype from 'remark-rehype';
+  import rehypeStringify from 'rehype-stringify';
 
   // ─── Event contracts — typed surface for sub-tasks 6/8/9 ────────────────
   interface EditorChangedDetail {
@@ -196,26 +202,58 @@ const STAND_IN_PROSE =
       "under the words, doing its work before the reader knows there was work " +
       "to do, and Pilcrow exists to put that work back in reach for the open web.";
 
-    // ─── Plain-HTML fallback (Q D) ────────────────────────────────────────
-    // No markdown library — the playground v0 stand-in is plain prose. The
-    // converter splits on blank lines and wraps each block in <p>. HTML-
-    // escapes input so user-pasted content can't inject script tags.
-    const escapeHTML = (s: string): string =>
-      s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    // ─── Markdown → HTML transform (sub-task 10 follow-up) ────────────────
+    // Mirrors Astro's build-time stack MINUS the directive plugins. Same
+    // remark family the canonical site uses: remark-parse → remark-gfm →
+    // remark-smartypants → remark-rehype → rehype-stringify. The library
+    // choice is deliberate (not marked / markdown-it): the gate at
+    // `scripts/gate-playground-acceptance.mjs` measures playground ≡ canonical
+    // and library consistency makes that comparison meaningful — same
+    // tokeniser, same edge-case handling, same smart-punct semantics.
+    //
+    // OUT OF SCOPE: directives. The build pipeline runs `remark-directive`,
+    // `remark-pullquote`, `remark-sidenote`, `rehype-footnote-mark`, and
+    // `rehype-hoist-sidenotes` to transform `:::sidenote …:::`,
+    // `:::pullquote …:::`, and `[^N]` references into structural HTML
+    // (<aside class="sidenote">, <aside class="pullquote">, footnote
+    // section). The playground deliberately SKIPS these. Directive blocks
+    // pass through as their constituent text after remark parses them as
+    // plain paragraphs (the leading `:::name` and trailing `:::` lines
+    // appear as literal text in the typeset output). Footnote definitions
+    // `[^N]:` likewise pass through. This is filed as Level 2 candidate
+    // ("Browser-side directive pipeline") in NOTES.md and is the trade-off
+    // for keeping the playground bundle lean (no extra plugin layer).
+    //
+    // The unified pipeline is allocated once at module load. Each
+    // `processSync` call is ~5–15ms for a typical post-length input — well
+    // inside the 100ms paste-to-typeset budget.
+    const markdownProcessor = unified()
+      .use(remarkParse)
+      .use(remarkGfm)
+      .use(remarkSmartypants)
+      .use(remarkRehype, { allowDangerousHtml: true })
+      .use(rehypeStringify, { allowDangerousHtml: true });
 
-    const markdownToPlainHTML = (md: string): string => {
-      const blocks = md
-        .split(/\n{2,}/)
-        .map((b) => b.trim())
-        .filter((b) => b.length > 0);
-      if (blocks.length === 0) return '<p></p>';
-      return blocks.map((b) => `<p>${escapeHTML(b)}</p>`).join('\n');
+    const markdownToHTML = (md: string): string => {
+      try {
+        return String(markdownProcessor.processSync(md));
+      } catch {
+        // If the markdown processor throws on malformed input, fall back
+        // to an HTML-escaped paragraph so the user still sees something
+        // legible rather than the renderer failing the entire pane.
+        const escaped = md
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+        return `<p>${escaped}</p>`;
+      }
     };
 
-    const sourceToBodyHTML = (md: string): string => markdownToPlainHTML(md);
+    // Kept for the failure path (when BrowserRenderer init throws and we
+    // still want to paint legible content without typesetting).
+    const markdownToPlainHTML = (md: string): string => markdownToHTML(md);
+
+    const sourceToBodyHTML = (md: string): string => markdownToHTML(md);
 
     // ─── Family-name → CSS font-family stack ──────────────────────────────
     // Each family in the shortlist maps to a fallback stack so the visible

@@ -11,7 +11,13 @@
         "astro": "^6.1.10",
         "hyphenopoly": "^6.1.0",
         "js-yaml": "^4.1.1",
+        "rehype-stringify": "^10.0.1",
+        "remark-gfm": "^4.0.1",
+        "remark-parse": "^11.0.0",
+        "remark-rehype": "^11.1.2",
+        "remark-smartypants": "^3.0.2",
         "thumbhash": "^0.1.1",
+        "unified": "^11.0.5",
       },
       "devDependencies": {
         "@chenglou/pretext": "^0.0.6",

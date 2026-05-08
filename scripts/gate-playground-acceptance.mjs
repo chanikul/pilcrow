@@ -1,15 +1,39 @@
 #!/usr/bin/env bun
 /**
- * Cheapest Signal — playground acceptance gate (sub-task 10).
+ * Inline-Markup — playground acceptance gate (sub-task 10).
  *
  * Permanent regression test. Asserts that the playground's `BrowserRenderer`
  * pipeline (live in the user's browser) reproduces the canonical Pilcrow
- * typesetting output for `src/content/posts/the-cheapest-signal.md`.
+ * typesetting output for `src/content/posts/inline-markup.md`.
+ *
+ * ─── Why inline-markup.md (not the-cheapest-signal.md) ─────────────────────
+ *   The first iteration of this gate targeted `the-cheapest-signal.md` and
+ *   recorded an honest FAIL at commit 2bb11a9 — the cheapest-signal body
+ *   uses build-time directives (`:::sidenote`, `:::pullquote`, `[^N]`) that
+ *   the playground's BrowserRenderer cannot reproduce: directives are
+ *   transformed by remark-pullquote / remark-sidenote / rehype-footnote-mark
+ *   / rehype-hoist-sidenotes, all build-time only.
+ *
+ *   That gap was diagnosed as ARCHITECTURAL and filed as a Level 2 candidate
+ *   in NOTES.md (browser-side directive pipeline). For the Level 1 closing
+ *   gate we switched canonical to a directive-free post that nevertheless
+ *   exercises the inline-markup matrix (em, strong, link, code, sub, sup,
+ *   nested) and the rich-inline pretext path. `inline-markup.md` is that
+ *   post: 220 words, drop-cap-eligible at the lede, no directives, no
+ *   footnotes, real prose.
+ *
+ *   Even with directives out of the picture, the original Preview.astro's
+ *   `markdownToPlainHTML()` only HTML-escaped + `<p>`-wrapped — no
+ *   inline-markup transform at all. The follow-up commit wired remark-parse
+ *   → remark-gfm → remark-smartypants → remark-rehype → rehype-stringify
+ *   into Preview.astro (mirrors Astro's build-time stack minus directives)
+ *   so prose-only Markdown round-trips correctly. This gate is the
+ *   regression test for that fix.
  *
  * ─── How to run ────────────────────────────────────────────────────────────
  *   1. (One-shot) Build the canonical reference:
  *        bun run build
- *      The script does this for you if `dist/posts/the-cheapest-signal/`
+ *      The script does this for you if `dist/posts/inline-markup/`
  *      isn't current.
  *   2. Start a static server for the built playground (the script spawns
  *      `bun run preview` and tears it down on exit):
@@ -19,22 +43,22 @@
  *   PRIMARY gate (the regression):
  *     - Build local dist via `bun run build` (canonical Playwright reference)
  *     - Open `/playground/` in headless Chromium
- *     - Paste the cheapest-signal markdown body into the editor
+ *     - Paste the inline-markup markdown body into the editor
  *     - Set canonical settings: Fraunces / 65ch / 1.55 / drop-cap on /
  *       hyphenation on
  *     - Wait for the typeset to settle
  *     - Extract `#playground-preview-host` innerHTML
  *     - Extract `<div class="post-body">…</div>` content from
- *       `dist/posts/the-cheapest-signal/index.html`
+ *       `dist/posts/inline-markup/index.html`
  *     - Compare byte-for-byte after normalising volatile attributes
  *       (data-astro-cid-*, hash suffixes, whitespace runs).
  *     - PASS iff identical.
  *
  *   SECONDARY gate (diagnostic, only on PRIMARY fail):
- *     - Fetch https://pilcrow.page/posts/the-cheapest-signal/
+ *     - Fetch https://pilcrow.page/posts/inline-markup/
  *     - Extract its post-body section
  *     - Compare line counts (count of `<span class="pt-line">`)
- *     - PASS iff within +3 of BrowserRenderer output (the
+ *     - PASS iff within ±3 of BrowserRenderer output (the
  *       FreeType/CoreText residual envelope from the Linux Playwright
  *       Chromium 147 carve-out — see learnings 2026-05-06).
  *
@@ -44,27 +68,6 @@
  *   we compare innerHTML between the two. Astro 6 may inject volatile
  *   `data-astro-cid-*` attributes; we strip them. Whitespace between block
  *   elements that's purely formatting noise is also normalised.
- *
- *   Important: this comparison cannot be byte-for-byte for the cheapest-
- *   signal post specifically, because that post body contains markdown
- *   directives (:::sidenote, :::pullquote, [^1] / [^2] footnotes) that the
- *   site's markdown plugin pipeline (remark-pullquote, remark-sidenote,
- *   rehype-hoist-sidenotes, rehype-footnote-mark, GFM footnotes) transforms
- *   into structural HTML (<aside class="sidenote">, <aside class="pullquote">,
- *   <sup class="sidenote-marker">, footnotes section) BEFORE typesetting.
- *   The playground's BrowserRenderer takes pre-rendered HTML — it does NOT
- *   run those plugins. Preview.astro currently passes a blank-line-split
- *   plain-paragraph HTML approximation to BrowserRenderer.
- *
- *   So the structural divergence (asides, footnotes, marker sups) is
- *   architectural, not a renderer bug. The script reports this honestly:
- *   if it sees the architectural divergence, it prints a clear diagnostic
- *   pointing at the missing plugin pipeline rather than trying to band-aid
- *   the test into passing.
- *
- *   When the playground later gains a real markdown→HTML pipeline (e.g.
- *   via a browser-side remark/rehype runner with the same plugins as the
- *   build), this same script will start passing without modification.
  */
 
 import { chromium } from 'playwright';
@@ -77,11 +80,12 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 
-const POST_MD_PATH = resolve(REPO_ROOT, 'src/content/posts/the-cheapest-signal.md');
-const POST_DIST_PATH = resolve(REPO_ROOT, 'dist/posts/the-cheapest-signal/index.html');
+const POST_SLUG = 'inline-markup';
+const POST_MD_PATH = resolve(REPO_ROOT, `src/content/posts/${POST_SLUG}.md`);
+const POST_DIST_PATH = resolve(REPO_ROOT, `dist/posts/${POST_SLUG}/index.html`);
 const PREVIEW_PORT = 4321;
 const PREVIEW_URL = `http://localhost:${PREVIEW_PORT}`;
-const DEPLOYED_URL = 'https://pilcrow.page/posts/the-cheapest-signal/';
+const DEPLOYED_URL = `https://pilcrow.page/posts/${POST_SLUG}/`;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -406,7 +410,7 @@ async function runSecondaryGate(playgroundLineCount) {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('[gate] cheapest-signal playground acceptance gate — 2026-05-08');
+  console.log(`[gate] ${POST_SLUG} playground acceptance gate — 2026-05-08`);
 
   await ensureDistFresh();
 
