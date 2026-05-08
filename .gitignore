@@ -11,6 +11,9 @@ public/_images/
 context/current-issues.md
 context/screenshots/
 
+# Private strategy documents — never commit
+MONETISATION.md
+
 # Per-package build artifacts
 packages/*/tsconfig.tsbuildinfo
 packages/*/dist/
