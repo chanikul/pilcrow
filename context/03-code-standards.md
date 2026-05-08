@@ -50,7 +50,7 @@ Hyphenopoly (en-gb, leftmin 3, rightmin 3, minWordLength 6) runs Node-side befor
 - Sentinel: `LITERAL_HYPHEN_BREAK` returned for `stem + '-'` (literal hyphen in compound words like `drop-cap`, `well-being`); accept layout, no warning.
 - Helpers must live inside `page.evaluate()`'s callback — they run in browser context, cannot be Node imports.
 
-The wrapper is **acknowledged technical debt** awaiting upstream pretext `softHyphenMode: 'strict'` (issue #162). When upstream lands, remove `guardFlat`, `guardRich`, and the recovery loop entirely.
+The wrapper is **acknowledged technical debt** that pretext upstream **RESOLVED on 2026-05-09** via commit `f06fef0` (issue #162). The fix shipped as a behaviour change, not an opt-in option, so the wrapper becomes dead code once Pilcrow upgrades to a pretext release containing `f06fef0`. Tracked as a candidate spec in `context/06-progress-tracker.md`. When upgrading: remove `guardFlat`, `guardRich`, `findOrphanSHYPos`, `LITERAL_HYPHEN_BREAK` sentinel handling, and the recovery loop entirely; re-run the acceptance gate to verify.
 
 ## Drop-cap policy
 

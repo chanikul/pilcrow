@@ -97,8 +97,11 @@ These are deferred items from `NOTES.md` and observations from `.claude/learning
 6. **Chromium install caching on CF Pages** — investigate `PLAYWRIGHT_BROWSERS_PATH` cache path or custom build image. From NOTES.md, monitor build time.
 7. **`create-pilcrow` package size reduction** — remove or compress the 1.6MB bundled JPEG. From NOTES.md.
 
+### Engine improvements (post-upstream)
+9. **Post-pretext-#162 orphan-guard removal.** When `@chenglou/pretext` publishes a release containing commit `f06fef0` (issue #162 fix landed 2026-05-09), upgrade the dependency and remove the local orphan-guard wrapper entirely. Specifically: delete `guardFlat` and `guardRich` (inside `page.evaluate()` in `playwright.ts`), retire `findOrphanSHYPos` helper, remove `LITERAL_HYPHEN_BREAK` sentinel handling, drop the orphan recovery loop, and the targeted SHY-strip recovery path. Re-run `scripts/gate-playground-acceptance.mjs` to verify the new pretext behaviour doesn't regress on the canonical fixture. Audit the packed-grapheme catalogue captured in `NOTES.md` to confirm those cases now produce clean output. Estimated effort: 30–60 min once release is available.
+
 ### Upstream
-8. **Track pretext issue #162** (`softHyphenMode: 'strict'`). When it lands, remove `guardFlat`, `guardRich`, `findOrphanSHYPos`, and the orphan recovery loop entirely. Audit the packed-grapheme catalogue in NOTES.md to verify those cases improve.
+8. **Pretext issue #162** (`softHyphenMode: 'strict'`) — **fix landed upstream 2026-05-09 as commit `f06fef0`; awaiting npm release containing it.** Cheng Lou shipped the fix as a behaviour change (not opt-in). Orphan-guard removal becomes actionable on the next pretext npm release. Tracked as candidate spec 9 above.
 
 ---
 
@@ -109,6 +112,9 @@ These are deferred items from `NOTES.md` and observations from `.claude/learning
 ---
 
 ## Session notes
+
+### 2026-05-09 — pretext #162 fix landed upstream
+- **pretext #162 fix landed upstream.** Cheng Lou shipped commit `f06fef0` fixing the soft-hyphen / rightmin grapheme-packing case as a behaviour change (not opt-in). Acknowledged Pilcrow's bug report as "super clear repro and explanation". Orphan-guard removal becomes actionable on next pretext npm release. Tracked as candidate spec 9 above. First substantive upstream interaction; replied on the issue thread with restrained acknowledgement and Pilcrow link.
 
 ### 2026-05-06 — Spec workflow adopted
 - Migrated from single-file 17 KB `CLAUDE.md` to the 6-file context system.
