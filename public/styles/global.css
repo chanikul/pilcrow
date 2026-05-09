@@ -49,31 +49,33 @@
   font-display: swap;
 }
 
-/* ─── Playground six-font shortlist (sub-task 6) ─────────────────────────────
- * Five additional self-hosted families — static TTFs only, mirroring the
- * Fraunces approach above. Variable TTFs are forbidden in this codebase
- * after the Linux Playwright Chromium 147 silent-fail (see learnings 2026-05-06).
+/* ─── Playground extra-family @font-face declarations ────────────────────────
+ * Static-TTF fallbacks for three families that previously shipped as the
+ * playground's body picker (Newsreader, Source Serif 4, EB Garamond). After
+ * the 2026-05-09 migration to Google Fonts, the playground's runtime path
+ * loads these via the Google Fonts CSS2 stylesheet on the playground page —
+ * the local TTFs below remain as a no-network fallback (the GF link wins
+ * in cascade order). Inter and Spectral entries removed: Inter is loaded
+ * site-wide via the Google Fonts <link> in Base.astro; Spectral is no
+ * longer in the picker.
  *
- * These families are LAZY-LOADED. Only Fraunces is requested on first paint
- * (`body { font-family: "Fraunces" … }`). The playground's Settings.astro
- * fetches a family's faces via `document.fonts.load('400 19px <Family>')`
- * the first time the user picks that family, so the playground's initial
- * load stays at the Fraunces-only ~389 KB budget.
+ * Variable TTFs are forbidden in this codebase after the Linux Playwright
+ * Chromium 147 silent-fail (see learnings 2026-05-06). The runtime browser
+ * playground path loads variable woff2 from Google Fonts, which is fine —
+ * the build pipeline (Playwright) only resolves Fraunces, never these.
  *
  * Family-name strings here MUST exactly match the picker labels emitted by
  * Settings.astro. Multi-word names need quoting both in `font-family` here
- * and at every consumer site (BrowserRenderer's font shorthand string,
- * Preview's CSS).
+ * and at every consumer site.
  *
  * Drop-cap weight policy (per Settings.astro's FONT_CONFIG):
- *   Fraunces:        600 (SemiBold; static release has no Medium 500)
+ *   Fraunces:        600 (SemiBold)
  *   Newsreader:      500 (16pt opsz Medium)
- *   Source Serif 4:  600 (Semibold; static release has no Medium 500)
+ *   Source Serif 4:  600 (Semibold)
  *   EB Garamond:     500 (Medium)
- *   Inter:           500 (Medium — sans-serif drop cap, but qualifies)
- *   Spectral:        500 (Medium)
- *
- * Provenance: see commit message for source URLs + SHA256s for all 20 TTFs. */
+ *   Crimson Pro:     500 (Medium — Google Fonts only)
+ *   Literata:        500 (Medium — Google Fonts only)
+ */
 
 /* Newsreader — 16pt opsz static instances (productiontype/Newsreader). */
 @font-face {
@@ -167,65 +169,13 @@
   font-display: swap;
 }
 
-/* Inter — Rasmus Andersson (rsms/inter v4.1, extras/ttf statics). */
-@font-face {
-  font-family: "Inter";
-  src: url("/fonts/Inter-Regular.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/fonts/Inter-Medium.ttf") format("truetype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/fonts/Inter-Bold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("/fonts/Inter-Italic.ttf") format("truetype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
+/* Inter is loaded site-wide via the Google Fonts <link> in Base.astro —
+   wght 400, 500, 600 cover all chrome usages (.site-nav, .preview-label,
+   .editor-label, .settings-label, .font-swatch-label, .copy-html-button,
+   sidenote/figcaption text). No local @font-face needed.
 
-/* Spectral — Production Type via google/fonts. */
-@font-face {
-  font-family: "Spectral";
-  src: url("/fonts/Spectral-Regular.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Spectral";
-  src: url("/fonts/Spectral-Medium.ttf") format("truetype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Spectral";
-  src: url("/fonts/Spectral-Bold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Spectral";
-  src: url("/fonts/Spectral-Italic.ttf") format("truetype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
+   Spectral was removed from the playground picker on 2026-05-09; no
+   consumers remain. */
 
 /* ─── Palette tokens ─────────────────────────────────────────────────────── */
 :root {
