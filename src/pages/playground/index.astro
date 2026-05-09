@@ -59,6 +59,22 @@ import Settings from '../../components/playground/Settings.astro';
 ---
 
 <Base title="Pilcrow Playground" chrome="minimal">
+  {/* Google Fonts — playground-only payload for the five non-Fraunces
+      families in the picker. Fraunces continues to load locally via
+      global.css's @font-face declarations (the wider site already serves
+      Fraunces from /public/fonts/, so duplicating it here would be
+      wasteful). The other five are body-tuned editorial serifs not used
+      anywhere else on the site, so a single CSS2 stylesheet request is
+      cheaper than self-hosting their TTFs. Variable axes (opsz, wght,
+      ital) are requested as ranges so future weight/opsz controls work
+      without re-requesting the URL. */}
+  <Fragment slot="head">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&family=EB+Garamond:ital,wght@0,400..700;1,400&family=Crimson+Pro:ital,wght@0,400..700;1,400&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400&display=swap"
+    />
+  </Fragment>
   <main class="playground" aria-labelledby="playground-title">
     <header class="playground-header">
       <h1 id="playground-title">Playground</h1>

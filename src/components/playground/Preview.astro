@@ -131,6 +131,20 @@ const STAND_IN_PROSE =
   >
     Pilcrow's typesetter couldn't initialise — showing plain HTML.
   </p>
+  {/* Typesetting indicator — shown only if a typeset takes longer than
+      150ms (which is the case for font picks: a 100-300ms Google Fonts
+      woff2 fetch followed by canvas measurement + pretext line-break
+      pass). Debounced keystrokes typically resolve under 50ms and so
+      never trigger this label. Inter, muted, single line — same
+      register as the failure notice. */}
+  <p
+    id="playground-preview-typesetting-badge"
+    class="preview-typesetting-badge"
+    aria-live="polite"
+    hidden
+  >
+    Typesetting…
+  </p>
 </div>
 
 <script>
@@ -194,8 +208,11 @@ const STAND_IN_PROSE =
   const fallbackNotice = document.getElementById(
     'playground-preview-fallback-notice',
   ) as HTMLParagraphElement | null;
+  const typesettingBadge = document.getElementById(
+    'playground-preview-typesetting-badge',
+  ) as HTMLParagraphElement | null;
 
-  if (host && fallbackNotice) {
+  if (host && fallbackNotice && typesettingBadge) {
     // Stand-in prose — kept in sync with Editor.astro (and the SSR fallback
     // above) so the first typeset matches the editor's initial value. If
     // Editor.astro changes its stand-in copy, update both.
@@ -264,10 +281,10 @@ const STAND_IN_PROSE =
     // Each family in the shortlist maps to a fallback stack so the visible
     // host renders sensibly during the brief moment between pick and load
     // resolution. The first quoted name MUST match the @font-face family.
-    // Sans-serif (Inter) gets a sans fallback; everything else gets serif.
+    // The current shortlist is all-serif (Inter as a body font was dropped
+    // 2026-05-09); fallback is uniform.
     const familyStack = (family: string): string => {
       const quoted = `"${family}"`;
-      if (family === 'Inter') return `${quoted}, system-ui, sans-serif`;
       return `${quoted}, ui-serif, Georgia, "Times New Roman", serif`;
     };
 
@@ -377,6 +394,29 @@ const STAND_IN_PROSE =
      * The `source` arg is for postPath logging only; both editor and
      * settings events route through the same render path.
      */
+    // Defer-show the "Typesetting…" badge: only reveal it if the typeset
+    // takes longer than this threshold (a font-load + canvas-measure
+    // round). Fast typesets (debounced keystrokes, ~30ms) never trip the
+    // timer, so the badge never flashes during normal editing.
+    const TYPESETTING_BADGE_DELAY_MS = 150;
+    let typesettingBadgeTimer: number | null = null;
+    const showTypesettingBadgeAfterDelay = (): void => {
+      if (typesettingBadgeTimer !== null) {
+        window.clearTimeout(typesettingBadgeTimer);
+      }
+      typesettingBadgeTimer = window.setTimeout(() => {
+        typesettingBadge.hidden = false;
+        typesettingBadgeTimer = null;
+      }, TYPESETTING_BADGE_DELAY_MS);
+    };
+    const hideTypesettingBadge = (): void => {
+      if (typesettingBadgeTimer !== null) {
+        window.clearTimeout(typesettingBadgeTimer);
+        typesettingBadgeTimer = null;
+      }
+      typesettingBadge.hidden = true;
+    };
+
     const runTypeset = async (source: string): Promise<void> => {
       // No settings yet → wait. (Settings.astro's init dispatch races the
       // editor's init dispatch; whichever lands second triggers the first
@@ -389,6 +429,7 @@ const STAND_IN_PROSE =
         return;
       }
       typesetting = true;
+      showTypesettingBadgeAfterDelay();
       try {
         const md = latestMarkdown;
         const settings = latestSettings;
@@ -415,6 +456,7 @@ const STAND_IN_PROSE =
         showFallback(latestMarkdown, `typeset failed (source=${source}): ${(err as Error).message}`);
       } finally {
         typesetting = false;
+        hideTypesettingBadge();
         if (pendingRetypeset) {
           pendingRetypeset = false;
           void runTypeset(source);
@@ -561,6 +603,20 @@ const STAND_IN_PROSE =
   /* Failure notice — Inter, muted, single line. Hidden by default;
      surfaced by the script via `hidden` attribute toggle. */
   .preview-fallback-notice {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 1rem 0 0;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  /* Typesetting indicator — same chrome register as the failure notice,
+     shown only when a typeset exceeds the 150ms delay (i.e. font-load +
+     canvas-measure window after a swatch click). Reserves layout space
+     visually equivalent to the failure notice so the surrounding frame
+     doesn't shift when it appears. */
+  .preview-typesetting-badge {
     font-family: 'Inter', system-ui, sans-serif;
     font-size: 0.85rem;
     color: var(--muted);

@@ -15,12 +15,21 @@
  * (share-URL) builds against. Preview.astro listens and re-typesets.
  *
  * ─── Question A — six-font shortlist (taste call resolved by user) ────────
- *   Fraunces · Newsreader · Source Serif 4 · EB Garamond · Inter · Spectral.
+ *   Fraunces · Newsreader · Source Serif 4 · EB Garamond · Crimson Pro · Literata.
  *   Coverage: display-as-body / body-tuned-modern / transitional / old-style /
- *   neutral-sans / contemporary-with-character. All open-licensed, all
- *   ship static instances (variable-axis TTF forbidden after the
- *   Linux Playwright 147 silent-fail — see learnings 2026-05-06), all
- *   include a real italic. Asset provenance in the commit message.
+ *   contemporary-revival / screen-reading. All open-licensed, all-serif
+ *   editorial register (no sans-serif in the body picker), all include a
+ *   real italic.
+ *
+ *   Loading: Fraunces is self-hosted via /public/fonts/ + @font-face in
+ *   global.css (matches the wider site). The other five load on the
+ *   playground page only via a single Google Fonts CSS2 stylesheet
+ *   request — variable axes (opsz, wght, ital) requested as ranges so
+ *   future weight/opsz controls work without re-requesting the URL.
+ *   The variable-axis-TTF ban from learnings 2026-05-06 applies to the
+ *   build pipeline (Playwright/post bodies), NOT to runtime browser
+ *   font loading. The playground typesets in the user's browser; Google
+ *   Fonts woff2 with axis ranges is fine here.
  *
  * ─── Question B (settings topology) — (b) Two-row ─────────────────────────
  *   Font picker as full-width swatch row on top, other controls (drop cap,
@@ -99,14 +108,20 @@ interface FontConfig {
   swatchChar: string;
 }
 
-// Verified against each upstream's static release on 2026-05-07.
+// Verified against each upstream's Google Fonts release on 2026-05-09.
+// Drop-cap weights pick the closest editorial bracket each family ships
+// (500 Medium for old-style/body-tuned families, 600 SemiBold for
+// transitional/display) — every family in this list has both 500 and 600
+// available via its variable wght axis, so the disabled-state in
+// updateDropCapAvailability() is currently inert. Future shortlist edits
+// that add a 400/700-only family will trigger it without code changes.
 const FONTS: FontConfig[] = [
-  { family: 'Fraunces',        voice: 'display-as-body',            dropCapWeight: 600, swatchChar: 'A' },
-  { family: 'Newsreader',      voice: 'body-tuned-modern',          dropCapWeight: 500, swatchChar: 'A' },
-  { family: 'Source Serif 4',  voice: 'transitional',               dropCapWeight: 600, swatchChar: 'A' },
-  { family: 'EB Garamond',     voice: 'old-style',                  dropCapWeight: 500, swatchChar: 'A' },
-  { family: 'Inter',           voice: 'neutral-sans',               dropCapWeight: 500, swatchChar: 'A' },
-  { family: 'Spectral',        voice: 'contemporary-with-character',dropCapWeight: 500, swatchChar: 'A' },
+  { family: 'Fraunces',        voice: 'display-as-body',           dropCapWeight: 600, swatchChar: 'A' },
+  { family: 'Newsreader',      voice: 'body-tuned-modern',         dropCapWeight: 500, swatchChar: 'A' },
+  { family: 'Source Serif 4',  voice: 'transitional',              dropCapWeight: 600, swatchChar: 'A' },
+  { family: 'EB Garamond',     voice: 'old-style',                 dropCapWeight: 500, swatchChar: 'A' },
+  { family: 'Crimson Pro',     voice: 'contemporary-revival',      dropCapWeight: 500, swatchChar: 'A' },
+  { family: 'Literata',        voice: 'screen-reading',            dropCapWeight: 500, swatchChar: 'A' },
 ];
 
 const MEASURES = [50, 60, 65, 70, 75] as const;
@@ -388,15 +403,14 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     // Update a swatch's own font-family AFTER its font has loaded, so the
     // swatch becomes a real specimen of its face. (Pre-load, all swatches
     // render in Fraunces — see the @{font.family} comment in the markup.)
+    // All six families in the current shortlist are serifs; the fallback
+    // stack is uniform.
     const stylizeSwatch = (family: string): void => {
       const swatch = swatches.find((s) => s.dataset.font === family);
       const glyph = swatch?.querySelector<HTMLElement>('.font-swatch-glyph');
       if (!glyph) return;
       const familyToken = family.includes(' ') ? `"${family}"` : family;
-      const fallback = family === 'Inter'
-        ? 'system-ui, sans-serif'
-        : 'ui-serif, Georgia, "Times New Roman", serif';
-      glyph.style.fontFamily = `${familyToken}, ${fallback}`;
+      glyph.style.fontFamily = `${familyToken}, ui-serif, Georgia, "Times New Roman", serif`;
     };
 
     // ─── Font lazy-load (per learning entry 3, 2026-05-06) ───────────────
@@ -428,21 +442,16 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     // Italic) deferred to swatch click — that's still correct for the body
     // payload budget. But the SWATCH GLYPHS themselves need their family's
     // Regular 400 loaded at page-load, otherwise all six swatches paint in
-    // the cascade fallback (Fraunces / system serif) and look identical.
+    // the cascade fallback and look identical.
     //
-    // Cost: ~5 × Regular-400 TTFs. Spot-check sizes (du -k public/fonts):
-    //   Newsreader16pt-Regular   ~120 KB
-    //   SourceSerif4-Regular     ~155 KB
-    //   EBGaramond-Regular       ~600 KB (largest — wide Latin/Greek/Cyrillic)
-    //   Inter-Regular            ~310 KB
-    //   Spectral-Regular         ~140 KB
-    // Total delta vs. previous Fraunces-only initial: ~1.3 MB. Acceptable
-    // for a typography playground (designers visit on broadband). Subset-
-    // ting the swatch glyphs to a single character via unicode-range was
-    // considered and rejected — it requires a build step or pre-generated
-    // subset files, and the asset cost pays for itself the first time the
-    // user picks a non-Fraunces font (those Regular 400s are needed then
-    // anyway). Defer subsetting if the budget ever bites.
+    // After the 2026-05-09 Google-Fonts migration, the five non-Fraunces
+    // families now resolve via Google Fonts woff2 instead of self-hosted
+    // TTFs. The Google Fonts CSS2 stylesheet is loaded on the playground
+    // page (see playground/index.astro), so each `document.fonts.load(...)`
+    // here triggers the woff2 fetch for that specific weight. Subsetting
+    // is handled upstream by Google's CSS2 endpoint via unicode-range, so
+    // the per-family payload is dramatically smaller than the previous
+    // self-hosted-TTF flow (~30-60 KB per family vs ~120-600 KB).
     //
     // Stylize each swatch AFTER its font load resolves so the glyph paints
     // in its real face the moment the bytes arrive (not waiting for click).
@@ -473,8 +482,8 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       'Newsreader',
       'Source Serif 4',
       'EB Garamond',
-      'Inter',
-      'Spectral',
+      'Crimson Pro',
+      'Literata',
     ];
 
     // ─── Wire swatches ──────────────────────────────────────────────────
@@ -588,15 +597,17 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     // ─── Copy-HTML action (sub-task 8) ──────────────────────────────────
     // Reads the live preview host (`#playground-preview-host`), wraps it
     // in a self-contained HTML document containing:
-    //   - @font-face declarations for the currently selected font (URL-
-    //     referenced against pilcrow.page; sub-question b3 default)
+    //   - a Google Fonts <link rel="stylesheet"> for the currently selected
+    //     font (variable axes requested as ranges; ~5 KB CSS + on-demand
+    //     woff2 fetches) — replaces the prior pilcrow.page/*.ttf
+    //     @font-face inlining (2026-05-09 migration)
     //   - the small set of measurement-critical rules from global.css
     //     (`html` font-size, body font-family, .post-body, .pt-line,
     //     .lede .drop-cap, .visually-hidden) — only the rules the typeset
     //     output actually uses, NOT the full editorial stylesheet
     //   - an HTML comment about font origin
-    // Self-contained: paste the clipboard into any HTML file and the
-    // typeset output renders with fonts loaded from pilcrow.page.
+    // Portable: paste the clipboard into any HTML file and the typeset
+    // output renders with fonts served by Google Fonts.
     //
     // Limitations (acknowledged for v0): styles for sidenotes, footnotes,
     // pull quotes are not included. If the user's pasted markdown uses
@@ -610,88 +621,50 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     );
 
     /**
-     * Per-family @font-face block keyed against the lazy-load list. Keeps
-     * each family's four faces in sync with the source-of-truth in
-     * global.css. Drop-cap weight tracks the swatch's data-drop-cap-weight.
-     * URL paths are absolute against pilcrow.page (b3 — fonts referenced,
-     * not inlined; ~5 KB payload vs ~1.5 MB if we base64-inlined).
+     * Per-family Google Fonts CSS2 URL fragment (everything after `family=`,
+     * before any `&family=` joiner). Variable axes are requested as ranges
+     * (wght 400..700, plus opsz where the family ships an opsz axis) so the
+     * one stylesheet covers body + drop-cap + bold + italic 400 with no
+     * extra requests. `display=swap` is appended at the URL boundary, not
+     * here.
      */
-    interface FontFaceSpec {
-      readonly file: string;
-      readonly weight: number;
-      readonly style: 'normal' | 'italic';
-    }
-    const FONT_FACES: Record<string, readonly FontFaceSpec[]> = {
-      'Fraunces': [
-        { file: 'Fraunces144pt-Regular.ttf',  weight: 400, style: 'normal' },
-        { file: 'Fraunces144pt-SemiBold.ttf', weight: 600, style: 'normal' },
-        { file: 'Fraunces144pt-Bold.ttf',     weight: 700, style: 'normal' },
-        { file: 'Fraunces144pt-Italic.ttf',   weight: 400, style: 'italic' },
-      ],
-      'Newsreader': [
-        { file: 'Newsreader16pt-Regular.ttf', weight: 400, style: 'normal' },
-        { file: 'Newsreader16pt-Medium.ttf',  weight: 500, style: 'normal' },
-        { file: 'Newsreader16pt-Bold.ttf',    weight: 700, style: 'normal' },
-        { file: 'Newsreader16pt-Italic.ttf',  weight: 400, style: 'italic' },
-      ],
-      'Source Serif 4': [
-        { file: 'SourceSerif4-Regular.ttf',  weight: 400, style: 'normal' },
-        { file: 'SourceSerif4-Semibold.ttf', weight: 600, style: 'normal' },
-        { file: 'SourceSerif4-Bold.ttf',     weight: 700, style: 'normal' },
-        { file: 'SourceSerif4-It.ttf',       weight: 400, style: 'italic' },
-      ],
-      'EB Garamond': [
-        { file: 'EBGaramond-Regular.ttf', weight: 400, style: 'normal' },
-        { file: 'EBGaramond-Medium.ttf',  weight: 500, style: 'normal' },
-        { file: 'EBGaramond-Bold.ttf',    weight: 700, style: 'normal' },
-        { file: 'EBGaramond-Italic.ttf',  weight: 400, style: 'italic' },
-      ],
-      'Inter': [
-        { file: 'Inter-Regular.ttf', weight: 400, style: 'normal' },
-        { file: 'Inter-Medium.ttf',  weight: 500, style: 'normal' },
-        { file: 'Inter-Bold.ttf',    weight: 700, style: 'normal' },
-        { file: 'Inter-Italic.ttf',  weight: 400, style: 'italic' },
-      ],
-      'Spectral': [
-        { file: 'Spectral-Regular.ttf', weight: 400, style: 'normal' },
-        { file: 'Spectral-Medium.ttf',  weight: 500, style: 'normal' },
-        { file: 'Spectral-Bold.ttf',    weight: 700, style: 'normal' },
-        { file: 'Spectral-Italic.ttf',  weight: 400, style: 'italic' },
-      ],
+    const FONT_GOOGLE_QUERY: Record<string, string> = {
+      'Fraunces':
+        'Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400',
+      'Newsreader':
+        'Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400',
+      'Source Serif 4':
+        'Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400',
+      'EB Garamond':
+        'EB+Garamond:ital,wght@0,400..700;1,400',
+      'Crimson Pro':
+        'Crimson+Pro:ital,wght@0,400..700;1,400',
+      'Literata':
+        'Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400',
     };
-    const FONT_ORIGIN = 'https://pilcrow.page/fonts';
+    const FONT_GOOGLE_BASE = 'https://fonts.googleapis.com/css2';
+
+    /** Build the absolute Google Fonts CSS2 URL for a single chosen family. */
+    const buildGoogleFontsURL = (family: string): string => {
+      const query = FONT_GOOGLE_QUERY[family] ?? FONT_GOOGLE_QUERY['Fraunces'];
+      return `${FONT_GOOGLE_BASE}?family=${query}&display=swap`;
+    };
 
     /**
      * Build the inlined CSS block for the chosen font + measurement
      * settings. Only includes rules the typeset output actually uses.
+     * Note: the @font-face declarations are NOT inlined here — the
+     * Google Fonts stylesheet is referenced from a <link> tag in the
+     * <head> of the exported document (see buildCopyableHTML below).
      */
     const buildInlinedCSS = (settings: PlaygroundSettings): string => {
-      const faces = FONT_FACES[settings.font] ?? FONT_FACES['Fraunces'] ?? [];
-      const familyToken = settings.font.includes(' ')
-        ? `"${settings.font}"`
-        : `"${settings.font}"`;
-      const fallback = settings.font === 'Inter'
-        ? 'system-ui, sans-serif'
-        : 'ui-serif, Georgia, "Times New Roman", serif';
-      const fontStack = `${familyToken}, ${fallback}`;
+      const familyToken = `"${settings.font}"`;
+      const fontStack = `${familyToken}, ui-serif, Georgia, "Times New Roman", serif`;
       const dropCapSwatch = swatches.find(
         (s) => s.dataset.font === settings.font,
       );
       const dropCapWeight = dropCapSwatch?.dataset.dropCapWeight ?? '600';
-      const fontFaceBlocks = faces
-        .map(
-          (f) =>
-            `@font-face {\n` +
-            `  font-family: ${familyToken};\n` +
-            `  src: url("${FONT_ORIGIN}/${f.file}") format("truetype");\n` +
-            `  font-weight: ${f.weight};\n` +
-            `  font-style: ${f.style};\n` +
-            `  font-display: swap;\n` +
-            `}`,
-        )
-        .join('\n');
       return [
-        fontFaceBlocks,
         `html { font-size: 19px; }`,
         `body {`,
         `  font-family: ${fontStack};`,
@@ -707,7 +680,7 @@ const DEFAULT_LINE_HEIGHT = 1.55;
         `}`,
         `.post-body p { margin: 0 0 1.8rem; }`,
         `.post-body p:empty { margin: 0; }`,
-        `.pt-line { display: block; }`,
+        `.pt-line { display: block; white-space: nowrap; overflow-wrap: anywhere; }`,
         `.lede .drop-cap {`,
         `  float: left;`,
         `  font-size: 4.6em;`,
@@ -740,17 +713,21 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       const settings: PlaygroundSettings =
         (window as PlaygroundWindow).__pilcrowSettings ?? readSettings();
       const css = buildInlinedCSS(settings);
+      const fontsURL = buildGoogleFontsURL(settings.font);
       const innerHTML = host.innerHTML;
       return [
         `<!DOCTYPE html>`,
         `<!-- Typeset by Pilcrow (https://pilcrow.page/playground).`,
-        `     Fonts served from pilcrow.page; for a fully self-contained version,`,
-        `     download the .ttf files from https://pilcrow.page/fonts/ and`,
-        `     replace the @font-face src URLs below with relative paths. -->`,
+        `     Fonts served by Google Fonts (https://fonts.google.com).`,
+        `     For a self-hosted version, download the woff2 files via`,
+        `     google-webfonts-helper or fontsource.org and swap the <link>`,
+        `     below for inlined @font-face declarations. -->`,
         `<html lang="en">`,
         `<head>`,
         `<meta charset="utf-8">`,
         `<title>Pilcrow typeset</title>`,
+        `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`,
+        `<link rel="stylesheet" href="${fontsURL}">`,
         `<style>`,
         css,
         `</style>`,
@@ -979,8 +956,8 @@ const DEFAULT_LINE_HEIGHT = 1.55;
   .font-swatch[data-font='Newsreader']     .font-swatch-glyph { font-family: "Newsreader",     ui-serif, Georgia, "Times New Roman", serif; }
   .font-swatch[data-font='Source Serif 4'] .font-swatch-glyph { font-family: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif; }
   .font-swatch[data-font='EB Garamond']    .font-swatch-glyph { font-family: "EB Garamond",    ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Inter']          .font-swatch-glyph { font-family: "Inter",          system-ui, sans-serif; }
-  .font-swatch[data-font='Spectral']       .font-swatch-glyph { font-family: "Spectral",       ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Crimson Pro']    .font-swatch-glyph { font-family: "Crimson Pro",    ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Literata']       .font-swatch-glyph { font-family: "Literata",       ui-serif, Georgia, "Times New Roman", serif; }
 
   .font-swatch-label {
     font-family: 'Inter', system-ui, sans-serif;
@@ -1138,14 +1115,8 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     /* Reset button defaults that drift visual register otherwise. */
     line-height: 1.2;
     transition: border-color 120ms ease, color 120ms ease;
-    /* Reserve enough width that label swaps ("Copied!", "Copy failed — see
-       console") don't cause the chrome row to reflow. */
-    min-width: 8rem;
-  }
-
-  /* The share button has a longer max label ("Copied — long URL") so it
-     needs a wider min-width to avoid reflow on label swap. */
-  .share-button {
+    /* Equal-cell width matches the stepper philosophy and accommodates the
+       longest label across both buttons ("Copied — long URL"). */
     min-width: 10rem;
   }
 
