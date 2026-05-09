@@ -50,11 +50,19 @@ const ogImage = slug
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={ogImage} />
+    {/* Per-page <head> injection (e.g. the playground's Google Fonts link).
+        Pages opt in via `<Fragment slot="head">…</Fragment>`. */}
+    <slot name="head" />
   </head>
   <body>
     <nav class="site-nav" aria-label="Primary">
       <a href="/" class="site-nav-mark">Pilcrow <span aria-hidden="true">¶</span></a>
-      {chrome === 'full' && <a href="/library/" class="site-nav-link">Library</a>}
+      {chrome === 'full' && (
+        <div class="site-nav-links">
+          <a href="/library/" class="site-nav-link">Library</a>
+          <a href="/playground/" class="site-nav-link">Playground</a>
+        </div>
+      )}
     </nav>
     <slot />
     {siteConfig.showPilcrowFooter && (

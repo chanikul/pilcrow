@@ -294,6 +294,13 @@ body {
   font-weight: 500;
 }
 
+/* Right-cluster of secondary links (Library, Playground). Single child still
+   reads as a single link; multiple children sit with a measured 1.25rem gap. */
+.site-nav-links {
+  display: flex;
+  gap: 1.25rem;
+}
+
 /* On wide viewports (≥1100px), expand .post to accommodate the sidenote margin
  * column (25ch + 2rem gap). The prose column remains at 65ch in the Grid.
  * .index stays at 65ch regardless (no sidenotes on the index page). */
