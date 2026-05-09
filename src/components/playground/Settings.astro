@@ -104,7 +104,9 @@ interface FontConfig {
    * (Per Q C resolution.)
    */
   dropCapWeight: 500 | 600 | null;
-  /** Sample glyph for the swatch (uppercase letter, single character). */
+  /** Sample glyph for the swatch — lowercase 'g' is the canonical typographer's
+   * specimen choice. Single-storey vs double-storey, descender shape, bowl
+   * proportion all carry signal at this size. */
   swatchChar: string;
 }
 
@@ -116,12 +118,12 @@ interface FontConfig {
 // updateDropCapAvailability() is currently inert. Future shortlist edits
 // that add a 400/700-only family will trigger it without code changes.
 const FONTS: FontConfig[] = [
-  { family: 'Fraunces',        voice: 'display-as-body',           dropCapWeight: 600, swatchChar: 'A' },
-  { family: 'Newsreader',      voice: 'body-tuned-modern',         dropCapWeight: 500, swatchChar: 'A' },
-  { family: 'Source Serif 4',  voice: 'transitional',              dropCapWeight: 600, swatchChar: 'A' },
-  { family: 'EB Garamond',     voice: 'old-style',                 dropCapWeight: 500, swatchChar: 'A' },
-  { family: 'Crimson Pro',     voice: 'contemporary-revival',      dropCapWeight: 500, swatchChar: 'A' },
-  { family: 'Literata',        voice: 'screen-reading',            dropCapWeight: 500, swatchChar: 'A' },
+  { family: 'Fraunces',        voice: 'display-as-body',           dropCapWeight: 600, swatchChar: 'g' },
+  { family: 'Newsreader',      voice: 'body-tuned-modern',         dropCapWeight: 500, swatchChar: 'g' },
+  { family: 'Source Serif 4',  voice: 'transitional',              dropCapWeight: 600, swatchChar: 'g' },
+  { family: 'EB Garamond',     voice: 'old-style',                 dropCapWeight: 500, swatchChar: 'g' },
+  { family: 'Crimson Pro',     voice: 'contemporary-revival',      dropCapWeight: 500, swatchChar: 'g' },
+  { family: 'Literata',        voice: 'screen-reading',            dropCapWeight: 500, swatchChar: 'g' },
 ];
 
 const MEASURES = [50, 60, 65, 70, 75] as const;
