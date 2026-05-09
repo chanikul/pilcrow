@@ -99,11 +99,16 @@ interface FontConfig {
    * inline as the editorial ground truth for sub-task 8/9 prose. */
   voice: string;
   /**
-   * Drop-cap weight: 500 OR 600 if the static release ships either. `null`
-   * means the family lacks both, so the drop-cap toggle disables for it.
-   * (Per Q C resolution.)
+   * Drop-cap weight. Pick the closest editorial bracket the family ships:
+   *   500 (Medium) for body-tuned faces — the standard pick
+   *   600 (SemiBold) for display/transitional faces with a real SemiBold
+   *   700 (Bold) for static releases that lack 500/600 (e.g. Libre
+   *     Baskerville) or for high-contrast didones where the heavier weight
+   *     reads as a deliberate display gesture (e.g. Playfair Display)
+   * `null` means the family lacks all three, so the drop-cap toggle
+   * disables for it. (Per Q C resolution.)
    */
-  dropCapWeight: 500 | 600 | null;
+  dropCapWeight: 500 | 600 | 700 | null;
   /** Sample glyph for the swatch — lowercase 'g' is the canonical typographer's
    * specimen choice. Single-storey vs double-storey, descender shape, bowl
    * proportion all carry signal at this size. */
@@ -118,12 +123,18 @@ interface FontConfig {
 // updateDropCapAvailability() is currently inert. Future shortlist edits
 // that add a 400/700-only family will trigger it without code changes.
 const FONTS: FontConfig[] = [
-  { family: 'Fraunces',        voice: 'display-as-body',           dropCapWeight: 600, swatchChar: 'g' },
-  { family: 'Newsreader',      voice: 'body-tuned-modern',         dropCapWeight: 500, swatchChar: 'g' },
-  { family: 'Source Serif 4',  voice: 'transitional',              dropCapWeight: 600, swatchChar: 'g' },
-  { family: 'EB Garamond',     voice: 'old-style',                 dropCapWeight: 500, swatchChar: 'g' },
-  { family: 'Crimson Pro',     voice: 'contemporary-revival',      dropCapWeight: 500, swatchChar: 'g' },
-  { family: 'Literata',        voice: 'screen-reading',            dropCapWeight: 500, swatchChar: 'g' },
+  // Row 1
+  { family: 'Fraunces',          voice: 'display-as-body',         dropCapWeight: 600, swatchChar: 'g' },
+  { family: 'Newsreader',        voice: 'body-tuned-modern',       dropCapWeight: 500, swatchChar: 'g' },
+  { family: 'Source Serif 4',    voice: 'transitional',            dropCapWeight: 600, swatchChar: 'g' },
+  { family: 'EB Garamond',       voice: 'old-style',               dropCapWeight: 500, swatchChar: 'g' },
+  { family: 'Crimson Pro',       voice: 'contemporary-revival',    dropCapWeight: 500, swatchChar: 'g' },
+  // Row 2 (added 2026-05-09 expansion to ten)
+  { family: 'Literata',          voice: 'screen-reading',          dropCapWeight: 500, swatchChar: 'g' },
+  { family: 'Lora',              voice: 'workhorse-body',          dropCapWeight: 600, swatchChar: 'g' },
+  { family: 'Libre Baskerville', voice: 'baskerville-revival',     dropCapWeight: 700, swatchChar: 'g' }, // static instances only — no variable axis; 700 is the bold face used as the drop cap
+  { family: 'Alegreya',          voice: 'humanist-italic',         dropCapWeight: 600, swatchChar: 'g' },
+  { family: 'Playfair Display',  voice: 'didone-display',          dropCapWeight: 700, swatchChar: 'g' }, // display-tuned; renders less ideally at body sizes than the others — included for magazine register
 ];
 
 const MEASURES = [50, 60, 65, 70, 75] as const;
@@ -354,15 +365,19 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     };
 
     // ─── Drop-cap-by-font enforcement (Q C) ─────────────────────────────
-    // After a font selection, if the selected font lacks a 500/600 weight,
-    // the drop-cap toggle is disabled. We also clear `checked` (silently
-    // fall the value to OFF) AND set a title attribute as the tooltip per
-    // the brief: "Drop cap requires a 500–600 weight; this font ships only
-    // 400/700."
+    // After a font selection, if the selected font lacks any editorial
+    // drop-cap weight (500/600/700), the drop-cap toggle is disabled. We
+    // also clear `checked` (silently fall the value to OFF) AND set a
+    // title attribute as the tooltip. 700 was added in the 10-font
+    // expansion: Libre Baskerville ships only 400/700 statics, and
+    // Playfair Display takes 700 deliberately as a high-contrast didone
+    // gesture. Both are valid drop-cap weights; the disabled-state only
+    // fires for a future addition that lacks all three.
     const updateDropCapAvailability = (fontFamily: string): void => {
       const swatch = swatches.find((s) => s.dataset.font === fontFamily);
       const weightStr = swatch?.dataset.dropCapWeight ?? '';
-      const hasWeight = weightStr === '500' || weightStr === '600';
+      const hasWeight =
+        weightStr === '500' || weightStr === '600' || weightStr === '700';
       if (!dropCapInput || !dropCapToggleLabel) return;
       if (hasWeight) {
         dropCapInput.disabled = false;
@@ -431,6 +446,8 @@ const DEFAULT_LINE_HEIGHT = 1.55;
         document.fonts.load(`700 19px ${familyToken}`),
         document.fonts.load(`italic 400 19px ${familyToken}`),
       ];
+      // 700 is already loaded above (body bold). Only 500/600 need an
+      // explicit extra fetch; 700 drop-caps reuse the body-bold face.
       if (dropCapWeightStr === '500' || dropCapWeightStr === '600') {
         promises.push(
           document.fonts.load(`${dropCapWeightStr} 19px ${familyToken}`),
@@ -486,6 +503,10 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       'EB Garamond',
       'Crimson Pro',
       'Literata',
+      'Lora',
+      'Libre Baskerville',
+      'Alegreya',
+      'Playfair Display',
     ];
 
     // ─── Wire swatches ──────────────────────────────────────────────────
@@ -643,6 +664,16 @@ const DEFAULT_LINE_HEIGHT = 1.55;
         'Crimson+Pro:ital,wght@0,400..700;1,400',
       'Literata':
         'Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400',
+      'Lora':
+        'Lora:ital,wght@0,400..700;1,400',
+      // Libre Baskerville ships only static instances (no variable axis).
+      // We request 400 + 700 explicitly + italic 400.
+      'Libre Baskerville':
+        'Libre+Baskerville:ital,wght@0,400;0,700;1,400',
+      'Alegreya':
+        'Alegreya:ital,wght@0,400..700;1,400',
+      'Playfair Display':
+        'Playfair+Display:ital,wght@0,400..700;1,400',
     };
     const FONT_GOOGLE_BASE = 'https://fonts.googleapis.com/css2';
 
@@ -900,9 +931,13 @@ const DEFAULT_LINE_HEIGHT = 1.55;
   }
 
   /* ─── Row 1 — font swatches ──────────────────────────────────────────── */
+  /* Five columns × two rows = ten swatches. The 5-up split keeps each
+     specimen wide enough for the lowercase g to read at 1.75rem; the
+     2026-05-09 expansion from six to ten preserved the swatch geometry by
+     dropping the column count from 6 to 5 rather than shrinking the cells. */
   .font-swatches {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 0.5rem;
   }
 
@@ -954,12 +989,16 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     color: var(--ink);
     /* Subtle italic-on-accent treatment dropped — too cute. Keep upright. */
   }
-  .font-swatch[data-font='Fraunces']       .font-swatch-glyph { font-family: "Fraunces",       ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Newsreader']     .font-swatch-glyph { font-family: "Newsreader",     ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Source Serif 4'] .font-swatch-glyph { font-family: "Source Serif 4", ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='EB Garamond']    .font-swatch-glyph { font-family: "EB Garamond",    ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Crimson Pro']    .font-swatch-glyph { font-family: "Crimson Pro",    ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Literata']       .font-swatch-glyph { font-family: "Literata",       ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Fraunces']          .font-swatch-glyph { font-family: "Fraunces",          ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Newsreader']        .font-swatch-glyph { font-family: "Newsreader",        ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Source Serif 4']    .font-swatch-glyph { font-family: "Source Serif 4",    ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='EB Garamond']       .font-swatch-glyph { font-family: "EB Garamond",       ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Crimson Pro']       .font-swatch-glyph { font-family: "Crimson Pro",       ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Literata']          .font-swatch-glyph { font-family: "Literata",          ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Lora']              .font-swatch-glyph { font-family: "Lora",              ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Libre Baskerville'] .font-swatch-glyph { font-family: "Libre Baskerville", ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Alegreya']          .font-swatch-glyph { font-family: "Alegreya",          ui-serif, Georgia, "Times New Roman", serif; }
+  .font-swatch[data-font='Playfair Display']  .font-swatch-glyph { font-family: "Playfair Display",  ui-serif, Georgia, "Times New Roman", serif; }
 
   .font-swatch-label {
     font-family: 'Inter', system-ui, sans-serif;
