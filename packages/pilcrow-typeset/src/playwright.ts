@@ -1569,7 +1569,17 @@ export class PlaywrightRenderer implements TypesetRenderer {
               const saObstacleWidth = saDataLocal.width + saDataLocal.padding;
               const saObstacleHeight = saDataLocal.height;
               const saMaxXArray = saDataLocal.maxXArray;
+              const saLineHeight = resolvedLineHeight;
               const MIN_WIDTH = 40;
+              // PACK_FACTOR: pretext receives a slightly narrower effective width
+              // than the box, giving it slack to break at better word boundaries.
+              // The pt-line block stays at the full _w (the box keeps the contour);
+              // the text fits in _w * PACK_FACTOR so the right edge under-fills
+              // by ~8%, producing soft ragged-right instead of compressed overflow.
+              // Tuned 2026-05-11 with the column-and-the-contour post — values
+              // above 0.95 left visible overflow at the 'g's narrow link; values
+              // below 0.90 produced too much trailing whitespace.
+              const PACK_FACTOR = 0.90;
 
               // Per-line geometry metadata, populated by the walkers in lockstep
               // with the lines they emit. After guardFlat / guardRich settles on a
@@ -1594,17 +1604,33 @@ export class PlaywrightRenderer implements TypesetRenderer {
                   let _offset = 0;
                   if (_localY < saObstacleHeight) {
                     // Within obstacle vertical extent: narrow by silhouette contour.
-                    const _rowY = Math.floor(_localY);
-                    const _maxX = (_rowY >= 0 && _rowY < saMaxXArray.length)
-                      ? (saMaxXArray[_rowY] ?? -1)
-                      : -1;
+                    // Take MAX maxX across the full line-box vertical extent
+                    // (y..y+lineHeight, clamped to obstacle bottom). This matches
+                    // what CSS shape-outside computes browser-side — without the
+                    // lookahead, the walker samples one row and gets a narrower
+                    // value than shape-outside's max-across-line-box, producing
+                    // a pt-line block too wide for the effective inline width and
+                    // overflow into the right gutter.
+                    const _lineEndY = Math.min(_localY + saLineHeight, saObstacleHeight);
+                    let _maxX = -1;
+                    for (let y = Math.floor(_localY); y < _lineEndY; y++) {
+                      if (y >= 0 && y < saMaxXArray.length) {
+                        const v = saMaxXArray[y] ?? -1;
+                        if (v > _maxX) _maxX = v;
+                      }
+                    }
                     const _obstacleRight = _maxX >= 0 ? _maxX + saDataLocal.padding : saObstacleWidth;
                     _w = Math.max(MIN_WIDTH, saWidth - _obstacleRight);
                     _offset = _obstacleRight;
                   } else {
                     _w = saWidth;
                   }
-                  const _range = pt.layoutNextLineRange(_prepared, _cursor, _w);
+                  // Give pretext a slightly narrower target than the box width so it
+                  // breaks at better word boundaries and never overflows the box.
+                  // The box (pt-line inline style) stays at _w; the text fits in
+                  // _w * PACK_FACTOR.
+                  const _effectiveW = _w * PACK_FACTOR;
+                  const _range = pt.layoutNextLineRange(_prepared, _cursor, _effectiveW);
                   if (_range === null) break;
                   const _line = pt.materializeLineRange(_prepared, _range);
                   _lines.push(escapeHTML(_line.text.trimEnd()));
@@ -1626,17 +1652,23 @@ export class PlaywrightRenderer implements TypesetRenderer {
                   let _w: number;
                   let _offset = 0;
                   if (_localY < saObstacleHeight) {
-                    const _rowY = Math.floor(_localY);
-                    const _maxX = (_rowY >= 0 && _rowY < saMaxXArray.length)
-                      ? (saMaxXArray[_rowY] ?? -1)
-                      : -1;
+                    // See layoutSAFlat for the lookahead rationale.
+                    const _lineEndY = Math.min(_localY + saLineHeight, saObstacleHeight);
+                    let _maxX = -1;
+                    for (let y = Math.floor(_localY); y < _lineEndY; y++) {
+                      if (y >= 0 && y < saMaxXArray.length) {
+                        const v = saMaxXArray[y] ?? -1;
+                        if (v > _maxX) _maxX = v;
+                      }
+                    }
                     const _obstacleRight = _maxX >= 0 ? _maxX + saDataLocal.padding : saObstacleWidth;
                     _w = Math.max(MIN_WIDTH, saWidth - _obstacleRight);
                     _offset = _obstacleRight;
                   } else {
                     _w = saWidth;
                   }
-                  const _range = ri.layoutNextRichInlineLineRange(_prepared, _w, _cursor);
+                  const _effectiveW = _w * PACK_FACTOR;
+                  const _range = ri.layoutNextRichInlineLineRange(_prepared, _effectiveW, _cursor);
                   if (_range === null) break;
                   const _line = ri.materializeRichInlineLineRange(_prepared, _range);
                   _lines.push(buildLineHTML(_line.fragments, itemMeta));
