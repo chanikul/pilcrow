@@ -128,6 +128,8 @@ pilcrow/
 
 Append-only. Each entry is a one-liner with date and reason.
 
+- **2026-05-09** — shape-around primitive shipped (glyph + image silhouette). Silhouette extraction via @shuding/opentype.js + SVG→Sharp for glyph; Sharp alpha-channel sampling for image. Node-side extraction at build time; maxXArray serialised and passed into page.evaluate() for variable-width pretext layout. data-src absolute path stripped from final HTML output. Left-float only in v1. CSS mobile fallback at ≤639px: float:none, obstacle stacks above prose.
+
 - **2026-04-29** — Editorial theme shipped: Fraunces (700, opsz 144, letter-spacing -0.015em) for body + h1, Inter on `<time>` only. Five `:root` palette tokens. Measure 65ch.
 - **2026-04-29** — Drop cap default-on for the lede paragraph; per-post opt-out via `dropCap: false` front-matter (read as meta tag).
 - **2026-04-29** — Orphan guard added (4-char threshold) as Pilcrow-local mitigation pending upstream pretext `softHyphenMode: 'strict'` (issue #162 filed 2026-04-30).

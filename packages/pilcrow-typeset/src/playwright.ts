@@ -33,6 +33,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TypesetOptions, TypesetRenderer } from './renderer.js';
 import { hyphenateHTML } from './hyphenate.js';
+import { getGlyphSilhouette, getImageSilhouette } from './silhouette.js';
 
 // ─── Read global.css once at module load ─────────────────────────────────────
 // Strategy (i): single source of truth for measurement-affecting CSS values.
@@ -243,6 +244,29 @@ const PRETEXT_PREFIX = `${PRETEXT_ORIGIN}/pretext/`;
  * disk so the typeset pipeline never depends on a third-party font CDN. */
 const FONTS_PREFIX = `${PRETEXT_ORIGIN}/fonts/`;
 
+/**
+ * Map a font family name to the Regular-weight TTF filename in public/fonts/.
+ *
+ * For v1, only fonts with TTFs in public/fonts/ are supported for glyph
+ * silhouette extraction. The mapping covers the fonts shipped with Pilcrow.
+ * Unknown fonts fall back to Fraunces with a build warning.
+ */
+function resolveFontFileName(fontName: string): string {
+  // Normalise: strip quotes, lowercase for comparison.
+  const name = fontName.replace(/^['"]|['"]$/g, '').trim();
+  const lower = name.toLowerCase();
+  if (lower === 'fraunces' || lower === '') return 'Fraunces144pt-Regular.ttf';
+  if (lower === 'newsreader') return 'Newsreader16pt-Regular.ttf';
+  if (lower === 'source serif 4' || lower === 'source serif4') return 'SourceSerif4-Regular.ttf';
+  if (lower === 'eb garamond' || lower === 'ebgaramond') return 'EBGaramond-Regular.ttf';
+  // Unknown font: warn and fall back to Fraunces.
+  process.stderr.write(
+    `[pilcrow] playwright: shape-around-glyph: unknown font "${name}" — falling back to Fraunces. ` +
+    `Add a TTF to public/fonts/ and a case here to support it.\n`,
+  );
+  return 'Fraunces144pt-Regular.ttf';
+}
+
 export class PlaywrightRenderer implements TypesetRenderer {
   private browser: Browser | null = null;
   private page: Page | null = null;
@@ -317,6 +341,120 @@ export class PlaywrightRenderer implements TypesetRenderer {
     // If PILCROW_SKIP_TYPESET=1, this method is never called, so hyphenation
     // is also naturally bypassed with no special handling needed here.
     const bodyHTML = await hyphenateHTML(html);
+
+    // ── Node-side shape-around extraction ────────────────────────────────────
+    // Scan bodyHTML for .shape-around containers and extract silhouette data
+    // for each one. Results are serialised as shapeAroundsData and passed into
+    // page.evaluate() so the browser context can apply variable-width layout.
+    //
+    // Strategy: a simple regex scan for <div class="shape-around"...> attributes
+    // is sufficient here — the remark-shape-around plugin emits deterministic HTML
+    // with no nested shape-around divs, and the data-* attributes contain only
+    // ASCII values (numbers, paths, single characters).
+    //
+    // The silhouette extraction runs entirely in the Node process. The browser
+    // context receives: { uid, type, maxXArray, width, height, size, padding,
+    // svgPath?, imageDataUrl? }. uid is a sequential integer matching the order
+    // of .shape-around divs in bodyHTML. The browser uses uid to associate each
+    // .shape-around element with its data, and uses svgPath / imageDataUrl to
+    // inject the visible obstacle (without these the obstacle reserves space
+    // but renders blank).
+    const shapeAroundsData: Array<{
+      uid: number;
+      type: string;
+      maxXArray: number[];
+      width: number;
+      height: number;
+      size: number;
+      padding: number;
+      svgPath?: string;
+      svgDataUrl?: string;
+      imageDataUrl?: string;
+    }> = [];
+
+    // Scan bodyHTML for shape-around div open tags.
+    // Pattern: <div class="shape-around" data-type="TYPE" data-size="N" data-padding="N"
+    //          [data-glyph="X" data-font="F"] | [data-src="/abs/path"]>
+    //
+    // We use a depth-counting approach that reads each <div> open tag that
+    // has class="shape-around" (no nested shape-arounds possible in v1).
+    const SHAPE_AROUND_RE = /<div[^>]+class="shape-around"[^>]*>/g;
+    let saMatch: RegExpExecArray | null;
+    let uid = 0;
+
+    while ((saMatch = SHAPE_AROUND_RE.exec(bodyHTML)) !== null) {
+      const tag = saMatch[0];
+      const getAttr = (name: string): string => {
+        const m = new RegExp(`data-${name}="([^"]*)"`, 'i').exec(tag);
+        return m ? (m[1] ?? '') : '';
+      };
+
+      const type = getAttr('type');
+      const size = parseInt(getAttr('size'), 10) || 480;
+      const padding = parseInt(getAttr('padding'), 10) || 16;
+
+      try {
+        let sil;
+        if (type === 'glyph') {
+          const glyphChar = getAttr('glyph');
+          const fontName = getAttr('font') || 'Fraunces';
+          // Resolve font TTF path: look in public/fonts/ relative to project root.
+          // The font name may not map 1:1 to a filename; we normalise it to match
+          // the Fraunces144pt-Regular.ttf naming convention for the default font.
+          // For v1, only Fraunces is supported for glyph silhouettes (the build-time
+          // font must be a local TTF that the Node process can read).
+          const fontsDir = join(process.cwd(), 'public', 'fonts');
+          const fontFileName = resolveFontFileName(fontName);
+          const fontPath = join(fontsDir, fontFileName);
+          sil = await getGlyphSilhouette(fontPath, glyphChar, size);
+        } else if (type === 'image') {
+          const imagePath = getAttr('src'); // absolute path from remark-shape-around
+          if (!imagePath) {
+            process.stderr.write(
+              `[pilcrow] playwright: shape-around-image uid=${uid}: missing data-src — skipping\n`,
+            );
+            uid++;
+            continue;
+          }
+          sil = await getImageSilhouette(imagePath, size);
+        } else {
+          process.stderr.write(
+            `[pilcrow] playwright: shape-around uid=${uid}: unknown type="${type}" — skipping\n`,
+          );
+          uid++;
+          continue;
+        }
+
+        shapeAroundsData.push({
+          uid,
+          type,
+          maxXArray: sil.maxXArray,
+          width: sil.width,
+          height: sil.height,
+          size,
+          padding,
+          ...(sil.svgPath !== undefined ? { svgPath: sil.svgPath } : {}),
+          ...(sil.svgDataUrl !== undefined ? { svgDataUrl: sil.svgDataUrl } : {}),
+          ...(sil.imageDataUrl !== undefined ? { imageDataUrl: sil.imageDataUrl } : {}),
+        });
+      } catch (err) {
+        process.stderr.write(
+          `[pilcrow] playwright: shape-around uid=${uid}: silhouette extraction failed — ${String(err)}\n`,
+        );
+        // Push a rectangular fallback (no wrapping effect).
+        shapeAroundsData.push({
+          uid,
+          type,
+          maxXArray: Array.from({ length: size }, (_, i) => i < size ? size - 1 : -1),
+          width: size,
+          height: size,
+          size,
+          padding,
+        });
+      }
+
+      uid++;
+    }
 
     // Build a minimal page that:
     //   1. Renders the post body HTML (with soft hyphens from Hyphenopoly) so
@@ -418,6 +556,20 @@ export class PlaywrightRenderer implements TypesetRenderer {
     aside.sidenote p {
       margin: 0;
     }
+    /* Shape-around — minimal measurement-critical rules.
+     * The .shape-obstacle float must be present so paragraph clientWidth
+     * reflects the narrowed measure correctly (float clears the available space).
+     * Width/height are set inline by page.evaluate() after obstacle injection. */
+    .shape-around {
+      position: relative;
+    }
+    .shape-obstacle {
+      float: left;
+      display: block;
+    }
+    .shape-around p {
+      margin: 0 0 ${m.postBodyPMarginBottom};
+    }
   </style>
 </head>
 <body>
@@ -451,7 +603,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
     // when options.dropCap !== false. Uses layoutNextLineRange / layoutNextRichInlineLineRange
     // for variable-width layout so lines beside the cap float are correctly narrowed.
     const result = await this.page.evaluate(
-      ({ fontShorthand, maxWidth, lineHeight, postPath, dropCap }) => {
+      ({ fontShorthand, maxWidth, lineHeight, postPath, dropCap, shapeArounds }) => {
         const pt = (window as any).pretext;
         const ri = (window as any).richInline;
         if (!pt?.prepareWithSegments || !pt?.layoutWithLines) {
@@ -959,6 +1111,119 @@ export class PlaywrightRenderer implements TypesetRenderer {
         const container = document.querySelector<HTMLElement>('.post-body');
         if (!container) throw new Error('[pilcrow] .post-body not found in loader page');
 
+        // ─── Shape-around obstacle injection ─────────────────────────────────────
+        // For each .shape-around container, inject a <span class="shape-obstacle">
+        // as the first child BEFORE the paragraphs. The obstacle is floated left
+        // via CSS; paragraphs flow around it. The obstacle element is aria-hidden.
+        //
+        // Width/height come from the silhouette bounding box (passed in shapeArounds).
+        // The obstacle does NOT contain actual glyph or image content — it is a
+        // transparent placeholder that reserves space for the CSS float. The actual
+        // visual rendering is handled by CSS + inline SVG (glyph) or img (image)
+        // injected here.
+        //
+        // Each .shape-around container gets a data-sa-uid attribute matching the
+        // uid in shapeArounds, so the paragraph loop can look up the correct maxXArray.
+
+        // Build a uid→data map for O(1) lookup in the paragraph loop.
+        type ShapeAroundEntry = {
+          uid: number;
+          type: string;
+          maxXArray: number[];
+          width: number;
+          height: number;
+          size: number;
+          padding: number;
+          svgPath?: string;
+          svgDataUrl?: string;
+          imageDataUrl?: string;
+        };
+        const shapeAroundMap = new Map<number, ShapeAroundEntry>();
+        for (const sa of (shapeArounds as ShapeAroundEntry[])) {
+          shapeAroundMap.set(sa.uid, sa);
+        }
+
+        // Inject obstacle elements into each .shape-around div.
+        const shapeAroundEls = Array.from(
+          container.querySelectorAll<HTMLElement>('.shape-around'),
+        );
+        let saUid = 0;
+        for (const saEl of shapeAroundEls) {
+          const saData = shapeAroundMap.get(saUid);
+          if (!saData) { saUid++; continue; }
+
+          // Set data-sa-uid so the paragraph loop can look up this element's data.
+          saEl.dataset['saUid'] = String(saUid);
+
+          // Create the obstacle span. Width includes padding (extra clearance to
+          // the right of the silhouette); height matches the silhouette bounding
+          // box. The float width is the total space subtracted from prose lines.
+          const obstacle = document.createElement('span');
+          obstacle.className = 'shape-obstacle';
+          obstacle.setAttribute('aria-hidden', 'true');
+          obstacle.style.width = `${saData.width + saData.padding}px`;
+          obstacle.style.height = `${saData.height}px`;
+
+          // Inject the visible asset inside the obstacle so the shape is actually
+          // rendered (without this the obstacle reserves space but is blank).
+          //   glyph variant → inline <svg><path/></svg>, fill: currentColor so
+          //                    the glyph picks up the body INK colour from CSS.
+          //   image variant → <img src="data:image/png;base64,…" alt="">.
+          //                    Empty alt because the image is decorative — the
+          //                    prose carries the meaning.
+          // The asset is sized to the silhouette bounding box (width, NOT
+          // width + padding — the padding is empty clearance, not part of the
+          // visible shape).
+          //
+          // Then set CSS shape-outside to the same data URL so prose actually
+          // wraps the silhouette CONTOUR rather than the rectangular bounding
+          // box. Without shape-outside, all pt-line spans share one left edge
+          // (the float box's right edge), even though pretext computes per-row
+          // widths correctly. shape-margin = data-padding adds the same px
+          // clearance pretext already applied to maxXArray, so CSS layout and
+          // pretext layout agree per row.
+          //
+          // Both variants use the URL form (not path()) so the browser handles
+          // coordinate alignment automatically — the SVG carries its own
+          // viewBox; the PNG carries its own intrinsic size. shape-outside is
+          // sampled from the rendered float-box dimensions either way.
+          if (saData.type === 'glyph' && saData.svgPath) {
+            const svgNS = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('viewBox', `0 0 ${saData.width} ${saData.height}`);
+            svg.setAttribute('width', String(saData.width));
+            svg.setAttribute('height', String(saData.height));
+            const path = document.createElementNS(svgNS, 'path');
+            path.setAttribute('d', saData.svgPath);
+            path.setAttribute('fill', 'currentColor');
+            svg.appendChild(path);
+            obstacle.appendChild(svg);
+            if (saData.svgDataUrl) {
+              obstacle.style.shapeOutside = `url("${saData.svgDataUrl}")`;
+              obstacle.style.shapeMargin = `${saData.padding}px`;
+            }
+          } else if (saData.type === 'image' && saData.imageDataUrl) {
+            const img = document.createElement('img');
+            img.src = saData.imageDataUrl;
+            img.alt = '';
+            img.width = saData.width;
+            img.height = saData.height;
+            obstacle.appendChild(img);
+            obstacle.style.shapeOutside = `url("${saData.imageDataUrl}")`;
+            obstacle.style.shapeMargin = `${saData.padding}px`;
+          }
+
+          // Insert before the first paragraph child.
+          saEl.insertBefore(obstacle, saEl.firstChild);
+
+          // Force layout so getBoundingClientRect reflects the float.
+          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+          saEl.offsetHeight;
+
+          saUid++;
+        }
+        // ─── End shape-around obstacle injection ──────────────────────────────────
+
         const paragraphs = Array.from(container.querySelectorAll<HTMLElement>('p'));
         let totalLines = 0;
         // Warnings are collected here and returned to the Node side for logging,
@@ -971,6 +1236,10 @@ export class PlaywrightRenderer implements TypesetRenderer {
         let isLede = true;
         // paraIdx counts non-empty paragraphs processed (for orphan-guard warnings).
         let paraIdx = 0;
+        // Shape-around running y-offsets: keyed by shape-around uid (number).
+        // Tracks the cumulative vertical position within each container so we
+        // know which rows of the silhouette to use for each paragraph.
+        const saYOffsets: Record<number, number> = {};
 
         for (const p of paragraphs) {
           const text = p.textContent ?? '';
@@ -1029,7 +1298,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
           //   !p.closest('.footnotes')      — GFM footnote list
           //   !p.closest('aside.sidenote')  — sidenote margin note
           // (Drop-cap gate narrowing per user spec — all three confirmed.)
-          if (isLede && dropCap !== false && !p.closest('aside.pullquote') && !p.closest('.footnotes') && !p.closest('aside.sidenote')) {
+          if (isLede && dropCap !== false && !p.closest('aside.pullquote') && !p.closest('.footnotes') && !p.closest('aside.sidenote') && !p.closest('.shape-around')) {
             isLede = false; // consume the lede slot regardless of outcome
 
             // Find the first Unicode letter in the paragraph text.
@@ -1231,7 +1500,152 @@ export class PlaywrightRenderer implements TypesetRenderer {
             // Not lede (or dropCap===false) — mark isLede consumed for first real para,
             // but only if this paragraph is NOT inside a pull quote, footnote list,
             // or sidenote. All three must not consume the isLede flag.
-            if (isLede && !p.closest('aside.pullquote') && !p.closest('.footnotes') && !p.closest('aside.sidenote')) isLede = false;
+            if (isLede && !p.closest('aside.pullquote') && !p.closest('.footnotes') && !p.closest('aside.sidenote') && !p.closest('.shape-around')) isLede = false;
+          }
+
+          // ---- Shape-around dispatch ----
+          // Paragraphs inside a .shape-around container use variable-width layout
+          // driven by the pre-sampled maxXArray from the silhouette extraction.
+          //
+          // Geometry model:
+          //   obstacleY: vertical position of the obstacle's top edge relative to
+          //              the .shape-around container (0 — inserted as first child).
+          //   For each line at cumulative y within the container:
+          //     if (y < obstacleHeight): available width = resolvedWidth - (maxXAtY(y) + padding)
+          //     else: available width = resolvedWidth
+          //   where maxXAtY is from the pre-sampled maxXArray.
+          //
+          // Paragraph cumulative y: sum of (number of lines × lineHeight) for all
+          // paragraphs that have been typeset in this shape-around container so far.
+          // This is tracked by saParaYOffset for each container separately.
+          //
+          // Note: the obstacle span has already been injected above and its float
+          // reserves space in the DOM. The paragraph's clientWidth would already be
+          // narrowed by the float for rows overlapping the obstacle — BUT we cannot
+          // rely on clientWidth alone because it returns the MINIMUM available width
+          // across the whole paragraph box, not per-row. We must use the per-row
+          // maxXArray from the silhouette to get correct variable-width behaviour.
+
+          const shapeAroundParent = p.closest<HTMLElement>('.shape-around');
+          if (shapeAroundParent !== null) {
+            const saUidStr = shapeAroundParent.dataset['saUid'];
+            const saUidNum = saUidStr !== undefined ? parseInt(saUidStr, 10) : -1;
+            const saData = saUidNum >= 0 ? shapeAroundMap.get(saUidNum) : undefined;
+
+            if (saData !== undefined) {
+              // Capture saData into a local non-optional constant so TypeScript
+              // can narrow it correctly inside the layoutSAFlat / layoutSARich
+              // closures below (closure captures don't narrow optional types
+              // through the outer if-guard in strict mode).
+              const saDataLocal = saData;
+
+              // Look up or initialise the running y-offset for this shape-around.
+              // We need to track how many lines have been typeset in this container
+              // so we know which rows of the silhouette to use for each paragraph.
+              //
+              // saYOffsets is a plain object keyed by uid (number).
+              // It is re-created every time this evaluate call runs — safe because
+              // the loop is sequential.
+
+              // Access saYOffsets from the outer evaluate scope.
+              // NOTE: we declare saYOffsets as a closure variable in the paragraph
+              // loop's outer scope; it persists across iterations for the same post.
+              const currentY = saYOffsets[saUidNum] ?? 0;
+
+              const saWidth = resolvedWidth;
+              const saObstacleWidth = saDataLocal.width + saDataLocal.padding;
+              const saObstacleHeight = saDataLocal.height;
+              const saMaxXArray = saDataLocal.maxXArray;
+              const MIN_WIDTH = 40;
+
+              // Variable-width layout function for shape-around flat paragraphs.
+              function layoutSAFlat(src: string): string[] {
+                const _prepared = pt.prepareWithSegments(src, resolvedFont);
+                let _cursor = { segmentIndex: 0, graphemeIndex: 0 };
+                let _localY = currentY;
+                const _lines: string[] = [];
+                while (true) {
+                  let _w: number;
+                  if (_localY < saObstacleHeight) {
+                    // Within obstacle vertical extent: narrow by silhouette contour.
+                    const _rowY = Math.floor(_localY);
+                    const _maxX = (_rowY >= 0 && _rowY < saMaxXArray.length)
+                      ? (saMaxXArray[_rowY] ?? -1)
+                      : -1;
+                    const _obstacleRight = _maxX >= 0 ? _maxX + saDataLocal.padding : saObstacleWidth;
+                    _w = Math.max(MIN_WIDTH, saWidth - _obstacleRight);
+                  } else {
+                    _w = saWidth;
+                  }
+                  const _range = pt.layoutNextLineRange(_prepared, _cursor, _w);
+                  if (_range === null) break;
+                  const _line = pt.materializeLineRange(_prepared, _range);
+                  _lines.push(escapeHTML(_line.text.trimEnd()));
+                  _cursor = _range.end;
+                  _localY += resolvedLineHeight;
+                }
+                return _lines;
+              }
+
+              // Variable-width layout function for shape-around rich-inline paragraphs.
+              function layoutSARich(srcItems: Array<{ text: string; font: string }>): string[] {
+                const _prepared = ri.prepareRichInline(srcItems);
+                let _cursor: unknown = undefined;
+                let _localY = currentY;
+                const _lines: string[] = [];
+                while (true) {
+                  let _w: number;
+                  if (_localY < saObstacleHeight) {
+                    const _rowY = Math.floor(_localY);
+                    const _maxX = (_rowY >= 0 && _rowY < saMaxXArray.length)
+                      ? (saMaxXArray[_rowY] ?? -1)
+                      : -1;
+                    const _obstacleRight = _maxX >= 0 ? _maxX + saDataLocal.padding : saObstacleWidth;
+                    _w = Math.max(MIN_WIDTH, saWidth - _obstacleRight);
+                  } else {
+                    _w = saWidth;
+                  }
+                  const _range = ri.layoutNextRichInlineLineRange(_prepared, _w, _cursor);
+                  if (_range === null) break;
+                  const _line = ri.materializeRichInlineLineRange(_prepared, _range);
+                  _lines.push(buildLineHTML(_line.fragments, itemMeta));
+                  _cursor = _range.end;
+                  _localY += resolvedLineHeight;
+                }
+                return _lines;
+              }
+
+              let saLines: string[];
+              if (offendingTag !== null) {
+                const brSafeText = p.innerHTML
+                  .replace(/<br\s*\/?>/gi, ' ')
+                  .replace(/<[^>]+>/g, '')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                saLines = guardFlat(brSafeText || text, layoutSAFlat, currentParaIdx);
+                warnings.push(
+                  `${postPath}: shape-around: unsupported inline element <${offendingTag.toLowerCase()}> — using flat fallback`,
+                );
+              } else if (items.length === 0) {
+                saLines = [];
+              } else {
+                const hasInlineEls = Array.from(p.childNodes).some(
+                  (n) => n.nodeType === Node.ELEMENT_NODE,
+                );
+                if (!hasInlineEls) {
+                  saLines = guardFlat(text, layoutSAFlat, currentParaIdx);
+                } else {
+                  saLines = guardRich(items, layoutSARich, currentParaIdx);
+                }
+              }
+
+              // Update the running y-offset for this container.
+              saYOffsets[saUidNum] = (saYOffsets[saUidNum] ?? 0) + saLines.length * resolvedLineHeight;
+
+              p.innerHTML = buildLineSpansHTML(saLines, markerHTMLs);
+              totalLines += saLines.length;
+              continue; // skip normal dispatch
+            }
           }
 
           // ---- Normal dispatch (non-lede paragraphs, or lede with skipped cap) ----
@@ -1317,7 +1731,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
           warnings,
         };
       },
-      { fontShorthand: options.fontShorthand, maxWidth: options.maxWidth, lineHeight: options.lineHeight, postPath: options.postPath ?? '', dropCap: options.dropCap },
+      { fontShorthand: options.fontShorthand, maxWidth: options.maxWidth, lineHeight: options.lineHeight, postPath: options.postPath ?? '', dropCap: options.dropCap, shapeArounds: shapeAroundsData },
     );
 
     // Emit any fallback warnings collected inside the browser context.
@@ -1326,7 +1740,18 @@ export class PlaywrightRenderer implements TypesetRenderer {
       process.stderr.write(`[pilcrow] ${w}\n`);
     }
 
-    return result;
+    // Strip data-src absolute paths from .shape-around elements in the final HTML.
+    // data-src carries the author's filesystem path (absolute) from remark-shape-around,
+    // which the Playwright pass used for silhouette extraction. After the build pass
+    // has run, the attribute is no longer needed — stripping it prevents leaking the
+    // author's local directory structure into the published HTML.
+    // We only strip data-src on .shape-around elements (not any other data-src uses).
+    const cleanHtml = result.html.replace(
+      /(<div[^>]+class="shape-around"[^>]*)\s+data-src="[^"]*"/g,
+      '$1',
+    );
+
+    return { ...result, html: cleanHtml };
   }
 
   async close(): Promise<void> {

@@ -5,6 +5,7 @@ import pilcrowTypeset from './src/integrations/pilcrow-typeset.js';
 import remarkDirective from 'remark-directive';
 import remarkPullquote from './packages/pilcrow-typeset/src/plugins/remark-pullquote.js';
 import remarkSidenote from './packages/pilcrow-typeset/src/plugins/remark-sidenote.js';
+import remarkShapeAround from './packages/pilcrow-typeset/src/plugins/remark-shape-around.js';
 import rehypeFootnoteMark from './packages/pilcrow-typeset/src/plugins/rehype-footnote-mark.js';
 import rehypeHoistSidenotes from './packages/pilcrow-typeset/src/plugins/rehype-hoist-sidenotes.js';
 import rehypeImages from './src/plugins/rehype-images.js';
@@ -59,7 +60,7 @@ export default defineConfig({
     // containerDirective AST nodes before the transform plugins run.
     // remarkSidenote runs after remarkPullquote so pull-quote detection
     // (parent.name === 'pullquote') is accurate.
-    remarkPlugins: [remarkDirective, remarkPullquote, remarkSidenote],
+    remarkPlugins: [remarkDirective, remarkPullquote, remarkSidenote, remarkShapeAround],
     // rehypeFootnoteMark runs after remark-gfm (Astro default) has emitted the
     // <section data-footnotes class="footnotes"> element, and prepends the
     // pilcrow glyph section-break marker with aria-hidden="true".

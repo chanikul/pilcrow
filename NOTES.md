@@ -1,5 +1,9 @@
 # Pilcrow v1 — Notes & Deferred Decisions
 
+- [2026-05-09] **shape-around shipped** — glyph and image silhouette variants. Left-float only for v1. Right-float (`align="right"`) is a follow-up: the CSS `float: right` change is one line; the geometry model in playwright.ts needs a `maxXFromRightAtY` variant. Shape-around-image v1 requires a PNG with alpha channel; auto-background-removal for opaque JPEGs is out of scope (requires ML model). Mobile fallback at ≤639px: obstacle stacks above prose (no float, no variable-width narrowing). Test post at `src/content/posts/shape-around-test.md` with `draft: true`.
+
+- [2026-05-09] **shape-around grapheme-pack artifacts at narrow measures** — the image variant produces narrow lines (~233px for a 480px circular obstacle in a 65ch column). At these measures, Hyphenopoly soft-hyphen positions trigger pretext's grapheme-pack behavior ("manu-s|cripts"). The orphan guard's Case 2 doesn't fire because the post-SHY residual ("cripts", 6 chars) is ≥ RIGHTMIN(3). These are aesthetic-quality artifacts, not orphan-guard-scope bugs. The upstream pretext #162 fix (`f06fef0`, awaiting npm release) will address them structurally.
+
 - [2026-05-01] **template/example.md sync — v1.x candidate.** `template/src/content/posts/example.md` and `src/content/posts/example.md` are conceptually the same content and should not drift; manual sync is fragile. v1.x candidate: build-time symlink, pre-commit check, or generate one from the other. Not blocking launch.
 
 - [2026-05-01] **Adjacent superscripts visually dense — v1.x candidate.** Line 27 of

@@ -60,6 +60,7 @@ The lede paragraph (first non-empty `<p>` in `.post-body`) gets `<span class="dr
 - `!p.closest('aside.pullquote')`
 - `!p.closest('.footnotes')`
 - `!p.closest('aside.sidenote')`
+- `!p.closest('.shape-around')` (added 2026-05-09 with shape-around primitive)
 
 If a future primitive adds a new aside-class container, add a gate.
 

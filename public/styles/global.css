@@ -787,3 +787,101 @@ aside.sidenote p {
   text-decoration: underline;
   text-decoration-thickness: 1px;
 }
+
+/* ─── Shape-around ───────────────────────────────────────────────────────────
+ * Pilcrow shape-around primitive.
+ *
+ * Two variants:
+ *   :::shape-around-glyph{glyph="a" font="Fraunces" size="480px"}
+ *   :::shape-around-image{src="./images/portrait.png" size="480px"}
+ *
+ * HTML output (Playwright pass adds the obstacle element):
+ *   <div class="shape-around" data-type="glyph" data-glyph="a"
+ *        data-font="Fraunces" data-size="480" data-padding="16">
+ *     <span class="shape-obstacle" aria-hidden="true">
+ *       <svg …>…</svg>   (glyph variant — vector)
+ *       OR
+ *       <img …>          (image variant — bitmap)
+ *     </span>
+ *     <p>…wrapped prose…</p>
+ *   </div>
+ *
+ * The obstacle floats left; prose flows around it via pretext's variable-width
+ * line walker (layoutNextLineRange), which narrows each line by (maxXAtY + padding)
+ * for the rows within the obstacle's vertical extent.
+ *
+ * After the obstacle's vertical extent, prose returns to the full prose column
+ * (clear: left on the first paragraph below the block).
+ *
+ * Mobile fallback (< 640px):
+ *   display: block — obstacle appears above the prose at its natural width
+ *   (no float, no wrapping). The obstacle shrinks to max-width: 100% so it
+ *   does not overflow the column.
+ *
+ * Design decisions (v1):
+ *   - Left-float only (right-float out of scope, tracked in NOTES.md).
+ *   - No border, no background, no decorative chrome on the container.
+ *   - The obstacle element is aria-hidden="true" (decorative, not semantic).
+ *   - On mobile, the obstacle is display: block above the prose (simple, safe).
+ *
+ * Measurement contract:
+ *   No measurement-critical rules here — pretext reads the obstacle dimensions
+ *   directly from the silhouette data (width, height, maxXArray) computed at
+ *   build time in packages/pilcrow-typeset/src/silhouette.ts.
+ *   The obstacle's pixel dimensions are passed into page.evaluate() as a
+ *   serialised array — no CSS measurement needed.
+ */
+
+/* Container — block-level, spans the prose column. */
+.shape-around {
+  position: relative;
+  margin-bottom: 1.8rem;
+}
+
+/* The obstacle element floats left so prose flows around it.
+ * Width and height are set inline by playwright.ts (matches silhouette px size).
+ * aria-hidden="true" is set in the HTML by playwright.ts. */
+.shape-obstacle {
+  float: left;
+  display: block;
+  /* Clear any preceding float (e.g. drop cap). */
+  clear: left;
+  /* Small bottom margin so prose below the obstacle doesn't press against it. */
+  margin-bottom: 0.5rem;
+}
+
+/* Glyph and image variants: the visible asset uses its own width attribute
+ * (set inline by playwright.ts to the silhouette bounding box width — NOT the
+ * full obstacle span width, which is `silhouette + padding` and includes empty
+ * clearance to the right). display: block to drop the inline-baseline gap. */
+.shape-around[data-type="glyph"] .shape-obstacle svg,
+.shape-around[data-type="image"] .shape-obstacle img {
+  display: block;
+}
+
+/* After the shape-around block: clear left so the following prose paragraph
+ * does not try to flow beside any residual float. The Playwright pass adds
+ * pt-line spans; the first paragraph after the container picks up the clear. */
+.shape-around + p,
+.shape-around + .shape-around {
+  clear: left;
+}
+
+/* ─── Mobile fallback (≤ 639px) ─────────────────────────────────────────────
+ * Below 640px: obstacle stacks above prose (display: block), no float, no
+ * variable-width narrowing. The pt-line spans are still emitted by the build-
+ * time Playwright pass (they reflect the desktop measure), but at narrow
+ * viewports those lines re-wrap visually — that is acceptable for the mobile
+ * fallback register.
+ *
+ * The obstacle width is capped at 100% of the column to prevent overflow.
+ */
+@media (max-width: 639px) {
+  .shape-obstacle {
+    float: none;
+    clear: none;
+    display: block;
+    max-width: 100%;
+    margin-bottom: 1rem;
+  }
+}
