@@ -884,4 +884,15 @@ aside.sidenote p {
     max-width: 100%;
     margin-bottom: 1rem;
   }
+  /* Reset the explicit per-row margin-left + width that playwright.ts emits
+   * inline on each .pt-line inside .shape-around. Those values are computed
+   * from the desktop float geometry and would push lines off-screen on mobile
+   * (e.g. margin-left: 472px on a 480px viewport). !important is required
+   * because the inline style would otherwise win over any cascaded rule.
+   * The pre-broken text fits cleanly when the lines flow at full available
+   * width below the stacked obstacle. */
+  .shape-around .pt-line {
+    margin-left: 0 !important;
+    width: auto !important;
+  }
 }

@@ -777,14 +777,27 @@ export class PlaywrightRenderer implements TypesetRenderer {
          * paragraph — the "stray 1 in accent colour" bug. Placing the marker
          * inside the last span keeps it inline at the end of the final line.
          */
-        function buildLineSpansHTML(inners: string[], markers: string[]): string {
+        function buildLineSpansHTML(
+          inners: string[],
+          markers: string[],
+          styles?: Array<{ marginLeft: number; width: number }>,
+        ): string {
           const markerHTML = markers.join('');
           return inners
-            .map((inner, i) =>
-              i === inners.length - 1
-                ? `<span class="pt-line">${inner}${markerHTML}</span>`
-                : `<span class="pt-line">${inner}</span>`,
-            )
+            .map((inner, i) => {
+              // styles is supplied only for shape-around dispatch; carries per-row
+              // margin-left + width so each pt-line is positioned explicitly. For
+              // non-shape-around paragraphs, styles is undefined and pt-line stays
+              // attribute-bare (full-column block, no inline style needed).
+              // Mobile fallback: !important rules in global.css clear these styles
+              // at <640px so the pt-line spans flow at full width when the
+              // obstacle stacks above instead of floating beside.
+              const styleAttr = styles && styles[i]
+                ? ` style="margin-left:${styles[i]!.marginLeft}px;width:${styles[i]!.width}px"`
+                : '';
+              const tail = i === inners.length - 1 ? markerHTML : '';
+              return `<span class="pt-line"${styleAttr}>${inner}${tail}</span>`;
+            })
             .join('');
         }
 
@@ -1558,14 +1571,27 @@ export class PlaywrightRenderer implements TypesetRenderer {
               const saMaxXArray = saDataLocal.maxXArray;
               const MIN_WIDTH = 40;
 
+              // Per-line geometry metadata, populated by the walkers in lockstep
+              // with the lines they emit. After guardFlat / guardRich settles on a
+              // final line array, saLineMeta corresponds row-for-row to that array
+              // (the orphan guard may re-call the walker, in which case both the
+              // line array and saLineMeta are repopulated for the new run). Used
+              // by buildLineSpansHTML to emit `style="margin-left:Xpx;width:Ypx"`
+              // on each .pt-line — making the per-row narrowing visible in
+              // DevTools' computed-style panel rather than living only inside the
+              // browser's shape-outside computation.
+              let saLineMeta: Array<{ marginLeft: number; width: number }> = [];
+
               // Variable-width layout function for shape-around flat paragraphs.
               function layoutSAFlat(src: string): string[] {
+                saLineMeta = [];
                 const _prepared = pt.prepareWithSegments(src, resolvedFont);
                 let _cursor = { segmentIndex: 0, graphemeIndex: 0 };
                 let _localY = currentY;
                 const _lines: string[] = [];
                 while (true) {
                   let _w: number;
+                  let _offset = 0;
                   if (_localY < saObstacleHeight) {
                     // Within obstacle vertical extent: narrow by silhouette contour.
                     const _rowY = Math.floor(_localY);
@@ -1574,6 +1600,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
                       : -1;
                     const _obstacleRight = _maxX >= 0 ? _maxX + saDataLocal.padding : saObstacleWidth;
                     _w = Math.max(MIN_WIDTH, saWidth - _obstacleRight);
+                    _offset = _obstacleRight;
                   } else {
                     _w = saWidth;
                   }
@@ -1581,6 +1608,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
                   if (_range === null) break;
                   const _line = pt.materializeLineRange(_prepared, _range);
                   _lines.push(escapeHTML(_line.text.trimEnd()));
+                  saLineMeta.push({ marginLeft: _offset, width: _w });
                   _cursor = _range.end;
                   _localY += resolvedLineHeight;
                 }
@@ -1589,12 +1617,14 @@ export class PlaywrightRenderer implements TypesetRenderer {
 
               // Variable-width layout function for shape-around rich-inline paragraphs.
               function layoutSARich(srcItems: Array<{ text: string; font: string }>): string[] {
+                saLineMeta = [];
                 const _prepared = ri.prepareRichInline(srcItems);
                 let _cursor: unknown = undefined;
                 let _localY = currentY;
                 const _lines: string[] = [];
                 while (true) {
                   let _w: number;
+                  let _offset = 0;
                   if (_localY < saObstacleHeight) {
                     const _rowY = Math.floor(_localY);
                     const _maxX = (_rowY >= 0 && _rowY < saMaxXArray.length)
@@ -1602,6 +1632,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
                       : -1;
                     const _obstacleRight = _maxX >= 0 ? _maxX + saDataLocal.padding : saObstacleWidth;
                     _w = Math.max(MIN_WIDTH, saWidth - _obstacleRight);
+                    _offset = _obstacleRight;
                   } else {
                     _w = saWidth;
                   }
@@ -1609,6 +1640,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
                   if (_range === null) break;
                   const _line = ri.materializeRichInlineLineRange(_prepared, _range);
                   _lines.push(buildLineHTML(_line.fragments, itemMeta));
+                  saLineMeta.push({ marginLeft: _offset, width: _w });
                   _cursor = _range.end;
                   _localY += resolvedLineHeight;
                 }
@@ -1642,7 +1674,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
               // Update the running y-offset for this container.
               saYOffsets[saUidNum] = (saYOffsets[saUidNum] ?? 0) + saLines.length * resolvedLineHeight;
 
-              p.innerHTML = buildLineSpansHTML(saLines, markerHTMLs);
+              p.innerHTML = buildLineSpansHTML(saLines, markerHTMLs, saLineMeta);
               totalLines += saLines.length;
               continue; // skip normal dispatch
             }
