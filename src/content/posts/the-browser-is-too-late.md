@@ -33,11 +33,7 @@ pretext is a line-breaking primitive by Cheng Lou that measures via Canvas 2D ra
 
 The hyphenation works the same way. Hyphenopoly, a TeX-trained library, inserts soft hyphens at syllable boundaries before the typeset pass runs. The combination produces breaks that a browser's `hyphens: auto` cannot: breaks chosen for the particular word at the particular column width, with a four-character minimum on the post-hyphen fragment so the eye is never stranded on a residual like `cs` or `ly` with nothing to anchor it.[^2] Words like *disproportionate* and *comprehension* and *extraordinary* break at the syllable, not wherever the glyph count happened to run out.
 
-<!-- PLACEHOLDER IMAGE — replace this comment with the line below once you have sourced an image.
-Suggested subject: a close-up of Linotype slugs (cast metal lines of type) in a composing stick or galley tray.
-Licence-clean source: Wikimedia Commons has multiple CC BY-SA images. Search "Linotype slug" or "hot metal type composing stick".
-Uncomment and update the path/alt when ready: -->
-<!-- ![Linotype slugs in a composing stick — cast metal lines of type, each break determined before the ink touched paper](./images/linotype-slugs.jpg) -->
+![Linotype slugs — cast metal lines of type, each break determined before the ink touched paper. Photograph by Dale Mahalko, 2008, CC BY-SA 3.0.](./images/linotype-slugs.jpg)
 
 The drop cap on this post's first paragraph is not decoration. It is a structural signal — the same signal that rubricators drew in red ink into manuscript codices to mark the start of a new section. It tells the reader: *this is the beginning; the text is waiting for you*. Pilcrow measures the float box created by the cap and adjusts each successive line's available width accordingly, so the text runs alongside it cleanly rather than tucking under. That measurement happens at **build time**. The browser never sees it as a problem to solve.
 
