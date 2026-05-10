@@ -1570,6 +1570,12 @@ export class PlaywrightRenderer implements TypesetRenderer {
               const saObstacleHeight = saDataLocal.height;
               const saMaxXArray = saDataLocal.maxXArray;
               const MIN_WIDTH = 40;
+              // Lead-in offset — mirrors `margin-top: 1.7em` on .shape-obstacle in
+              // global.css. The float renders one line-height below the column top,
+              // so line 0 of the first paragraph gets full column width as a lead-in
+              // and silhouette indexing starts at line 1. If global.css's margin-top
+              // is removed, set this to 0 and they remain coupled. (Tracked in NOTES.md.)
+              const SA_TOP_OFFSET = resolvedLineHeight;
 
               // Per-line geometry metadata, populated by the walkers in lockstep
               // with the lines they emit. After guardFlat / guardRich settles on a
@@ -1587,12 +1593,12 @@ export class PlaywrightRenderer implements TypesetRenderer {
                 saLineMeta = [];
                 const _prepared = pt.prepareWithSegments(src, resolvedFont);
                 let _cursor = { segmentIndex: 0, graphemeIndex: 0 };
-                let _localY = currentY;
+                let _localY = currentY - SA_TOP_OFFSET;
                 const _lines: string[] = [];
                 while (true) {
                   let _w: number;
                   let _offset = 0;
-                  if (_localY < saObstacleHeight) {
+                  if (_localY >= 0 && _localY < saObstacleHeight) {
                     // Within obstacle vertical extent: narrow by silhouette contour.
                     const _rowY = Math.floor(_localY);
                     const _maxX = (_rowY >= 0 && _rowY < saMaxXArray.length)
@@ -1620,12 +1626,12 @@ export class PlaywrightRenderer implements TypesetRenderer {
                 saLineMeta = [];
                 const _prepared = ri.prepareRichInline(srcItems);
                 let _cursor: unknown = undefined;
-                let _localY = currentY;
+                let _localY = currentY - SA_TOP_OFFSET;
                 const _lines: string[] = [];
                 while (true) {
                   let _w: number;
                   let _offset = 0;
-                  if (_localY < saObstacleHeight) {
+                  if (_localY >= 0 && _localY < saObstacleHeight) {
                     const _rowY = Math.floor(_localY);
                     const _maxX = (_rowY >= 0 && _rowY < saMaxXArray.length)
                       ? (saMaxXArray[_rowY] ?? -1)

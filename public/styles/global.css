@@ -840,9 +840,24 @@ aside.sidenote p {
 
 /* The obstacle element floats left so prose flows around it.
  * Width and height are set inline by playwright.ts (matches silhouette px size).
- * aria-hidden="true" is set in the HTML by playwright.ts. */
+ * aria-hidden="true" is set in the HTML by playwright.ts.
+ *
+ * margin-top: 1.7em — the lead-in offset. Pushes the float box down by exactly
+ * one line-height so the first line of prose renders at full column width
+ * ABOVE the figure, the editorial pattern visible in magazine spreads (a lead-
+ * in line, then prose wrapping the photograph below). 1.7em matches body
+ * line-height: 1.7, so the offset equals one rendered line. The walker in
+ * playwright.ts mirrors this offset (SA_TOP_OFFSET = resolvedLineHeight) so
+ * pretext skips line 0 when computing per-row narrowing — without that, the
+ * walker would still emit margin-left/width for line 0 as if the obstacle
+ * were at the column top, producing a half-broken state.
+ *
+ * If body line-height changes, both this value AND the walker's offset must
+ * change in lockstep. Tracked in NOTES.md as a coupling.
+ */
 .shape-obstacle {
   float: left;
+  margin-top: 1.7em;
   display: block;
   /* Clear any preceding float (e.g. drop cap). */
   clear: left;
@@ -882,6 +897,7 @@ aside.sidenote p {
     clear: none;
     display: block;
     max-width: 100%;
+    margin-top: 0; /* desktop lead-in offset doesn't apply when stacking */
     margin-bottom: 1rem;
   }
   /* Reset the explicit per-row margin-left + width that playwright.ts emits
