@@ -1,5 +1,5 @@
 ---
-title: The column and the contour
+title: The Column and the Contour
 description: "Two examples of the typeset column setting around its obstacles: a letterform, then a photograph."
 pubDate: 2026-05-10
 dropCap: false
