@@ -4,3 +4,8 @@
 # Example:
 #   /old-path/* /new-path/:splat 301
 # See: https://developers.cloudflare.com/pages/configuration/redirects/
+
+# Legacy default slug from the create-pilcrow template (2026-05-11).
+# The post is "The Paragraph Mark"; the old /posts/example/ URL was a default
+# scaffold artefact. Redirect any external links / bookmarks to the canonical URL.
+/posts/example/ /posts/the-paragraph-mark/ 301
