@@ -638,7 +638,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
           tagStack: TagEntry[],
           baseFont: string,
           baseFontSize: number,
-          items: Array<{ text: string; font: string }>,
+          items: Array<{ text: string; font: string; break?: 'normal' | 'never' }>,
           itemMeta: ItemMeta[],
         ): string | null {
           if (node.nodeType === Node.TEXT_NODE) {
@@ -675,7 +675,11 @@ export class PlaywrightRenderer implements TypesetRenderer {
             }
 
             const itemFont = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
-            items.push({ text, font: itemFont });
+            // Inline <code> content is atomic — pretext treats the entire span
+            // as a single unbreakable unit so URLs, file paths, and Markdown
+            // syntax don't fracture at periods or slashes inside backticks.
+            const breakMode = isCode ? 'never' as const : 'normal' as const;
+            items.push({ text, font: itemFont, break: breakMode });
             itemMeta.push({ tags: [...tagStack] });
             return null; // no error
           }
@@ -1023,8 +1027,8 @@ export class PlaywrightRenderer implements TypesetRenderer {
          * Returns the corrected inner line HTML strings.
          */
         function guardRich(
-          sourceItems: Array<{ text: string; font: string }>,
-          layoutFn: (it: Array<{ text: string; font: string }>) => string[],
+          sourceItems: Array<{ text: string; font: string; break?: 'normal' | 'never' }>,
+          layoutFn: (it: Array<{ text: string; font: string; break?: 'normal' | 'never' }>) => string[],
           paraIdx: number,
         ): string[] {
           let lines = layoutFn(sourceItems);
@@ -1034,7 +1038,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
           // Flatten items to a single text for SHY position search.
           // We track offsets so we can map a flat-text SHY position back to
           // the correct item index + intra-item position.
-          function flattenItems(items: Array<{ text: string; font: string }>): string {
+          function flattenItems(items: Array<{ text: string; font: string; break?: 'normal' | 'never' }>): string {
             return items.map(it => it.text).join('');
           }
 
@@ -1044,7 +1048,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
           const LITERAL_HYPHEN_SENTINEL = { literalHyphen: true as const };
 
           function findRichOrphanSHY(
-            items: Array<{ text: string; font: string }>,
+            items: Array<{ text: string; font: string; break?: 'normal' | 'never' }>,
             orphanLines: string[],
             orphanLineIdx: number,
           ): { itemIdx: number; posInItem: number } | { literalHyphen: true } | null {
@@ -1067,13 +1071,13 @@ export class PlaywrightRenderer implements TypesetRenderer {
           }
 
           function stripRichSHY(
-            items: Array<{ text: string; font: string }>,
+            items: Array<{ text: string; font: string; break?: 'normal' | 'never' }>,
             itemIdx: number,
             posInItem: number,
-          ): Array<{ text: string; font: string }> {
+          ): Array<{ text: string; font: string; break?: 'normal' | 'never' }> {
             return items.map((it, idx) =>
               idx === itemIdx
-                ? { text: stripAt(it.text, posInItem), font: it.font }
+                ? { ...it, text: stripAt(it.text, posInItem) }
                 : it,
             );
           }
@@ -1097,7 +1101,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
                 const pos = workItems[ii]!.text.indexOf(SHY);
                 if (pos >= 0) {
                   workItems = workItems.map((it, idx) =>
-                    idx === ii ? { text: stripAt(it.text, pos), font: it.font } : it,
+                    idx === ii ? { ...it, text: stripAt(it.text, pos) } : it,
                   );
                   stripped = true;
                   break;
@@ -1113,7 +1117,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
           }
 
           // Exhausted — strip all SHYs from all items (ragged fallback).
-          const noHyphItems = workItems.map(it => ({ text: it.text.replace(/­/g, ''), font: it.font }));
+          const noHyphItems = workItems.map(it => ({ ...it, text: it.text.replace(/­/g, '') }));
           warnings.push(
             `${postPath}: paragraph ${paraIdx} orphan guard (rich-inline): unrecoverable — stripped all soft hyphens`,
           );
@@ -1289,7 +1293,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
             (parseFloat(cs.lineHeight) || baseFontSize * 1.7);
 
           // --- Check for inline elements and build item arrays ---
-          const items: Array<{ text: string; font: string }> = [];
+          const items: Array<{ text: string; font: string; break?: 'normal' | 'never' }> = [];
           const itemMeta: ItemMeta[] = [];
           let offendingTag: string | null = null;
 
@@ -1387,12 +1391,12 @@ export class PlaywrightRenderer implements TypesetRenderer {
                 // For flat: slice the first character from the plain text string.
 
                 let strippedText = text.slice(capChar.length);
-                let strippedItems: Array<{ text: string; font: string }> = [];
+                let strippedItems: Array<{ text: string; font: string; break?: 'normal' | 'never' }> = [];
                 let strippedItemMeta: ItemMeta[] = [];
 
                 if (offendingTag === null && items.length > 0) {
                   // Re-derive items from the original HTML (without any cap span).
-                  const freshItems: Array<{ text: string; font: string }> = [];
+                  const freshItems: Array<{ text: string; font: string; break?: 'normal' | 'never' }> = [];
                   const freshItemMeta: ItemMeta[] = [];
                   for (const child of Array.from(p.childNodes)) {
                     walkNode(child, [], baseFamily, baseFontSize, freshItems, freshItemMeta);
@@ -1403,7 +1407,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
                     const first = freshItems[0]!;
                     const stripped = first.text.slice(capChar.length);
                     if (stripped.length > 0) {
-                      strippedItems = [{ text: stripped, font: first.font }, ...freshItems.slice(1)];
+                      strippedItems = [{ ...first, text: stripped }, ...freshItems.slice(1)];
                       strippedItemMeta = freshItemMeta; // indices unchanged (first item still index 0)
                     } else {
                       // First item was exactly the cap char — drop it entirely.
@@ -1451,7 +1455,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
                 /**
                  * Run the variable-width rich-inline layout loop and return inner line HTML.
                  */
-                function layoutCapRich(srcItems: Array<{ text: string; font: string }>): string[] {
+                function layoutCapRich(srcItems: Array<{ text: string; font: string; break?: 'normal' | 'never' }>): string[] {
                   const _prepared = ri.prepareRichInline(srcItems);
                   let _cursor: any = undefined;
                   let _y = 0;
@@ -1642,7 +1646,7 @@ export class PlaywrightRenderer implements TypesetRenderer {
               }
 
               // Variable-width layout function for shape-around rich-inline paragraphs.
-              function layoutSARich(srcItems: Array<{ text: string; font: string }>): string[] {
+              function layoutSARich(srcItems: Array<{ text: string; font: string; break?: 'normal' | 'never' }>): string[] {
                 saLineMeta = [];
                 const _prepared = ri.prepareRichInline(srcItems);
                 let _cursor: unknown = undefined;
