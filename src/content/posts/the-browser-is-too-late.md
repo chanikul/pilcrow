@@ -25,7 +25,9 @@ Typography exists to honour content.
 — Robert Bringhurst
 :::
 
-Pilcrow's answer is to move the decision earlier. At build time, before the page reaches anyone, a headless Chromium instance loads each post with its actual CSS — the real Fraunces instance at its real optical size, the real 65ch measure — and runs `pretext`[^1] over every paragraph. The line breaks are computed against the actual rendered geometry, not an approximation of it. The output is a static HTML file. Every prose line is wrapped in a `<span class="pt-line">`. The browser receives pre-broken text. There is nothing left to decide.
+Pilcrow's answer is to move the decision earlier. At build time, before the page reaches anyone, a headless Chromium instance loads each post with its actual CSS — the real Fraunces instance at its real optical size, the real 65ch measure — and runs `pretext`[^1] over every paragraph. The line breaks are computed against the actual rendered geometry, not an approximation of it. The output is a static HTML file. Every prose line is wrapped in a `<span class="pt-line">`.
+
+The browser receives pre-broken text. There is nothing left to decide.
 
 :::sidenote
 pretext is a line-breaking primitive by Cheng Lou that measures via Canvas 2D rather than DOM reflow. It is grapheme-aware, multilingual, and fast enough to run against a full post at build time. Pilcrow is the editorial layer built above it; pretext is the load-bearing wall underneath.
