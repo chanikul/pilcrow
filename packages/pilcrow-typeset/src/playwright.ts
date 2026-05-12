@@ -893,9 +893,20 @@ export class PlaywrightRenderer implements TypesetRenderer {
             // Case 2: packed-grapheme break — line ends '-<suffix>' (1–7 letters).
             // The suffix is already on line N (packed by pretext); what matters is
             // whether the post-SHY residual on line N+1 is below Hyphenopoly's rightmin.
+            //
+            // Two firing conditions:
+            //   (a) nextLen < RIGHTMIN — the residual on the next line is below
+            //       Hyphenopoly's editorial minimum (catches "cul-tur/e", "dis-tan/ce").
+            //   (b) suffix length ≤ 2 — pretext packed only 1–2 chars onto line N,
+            //       which means the *visible* fragment on line N+1 is smaller than
+            //       Hyphenopoly intended. E.g. "head-l/ess": suffix=1, nextLen=3 — the
+            //       intended residual was "less" (4 chars) but renders as "ess" (3 chars).
+            //       Catches "head-l/ess", "syl-l/able", and similar. This entire case (b)
+            //       becomes unnecessary once pretext commit f06fef0 lands on npm.
             const packedMatch = t.match(/-([a-zA-ZÀ-ɏ]{1,7})$/);
             if (packedMatch) {
-              if (nextLen < RIGHTMIN) return i;
+              const suffixLen = packedMatch[1]!.length;
+              if (nextLen < RIGHTMIN || suffixLen <= 2) return i;
             }
           }
           return -1;
