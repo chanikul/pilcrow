@@ -1,4 +1,6 @@
 ---
+import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { siteConfig } from '../config/site.ts';
 
 interface Props {
@@ -28,6 +30,19 @@ const SITE = 'https://pilcrow.page';
 const ogImage = slug
   ? `${SITE}/og/${slug}.png`
   : `${SITE}/og/index.png`;
+
+// Build-time content hash for /styles/global.css.
+// Cloudflare Pages + browsers cache the unfingerprinted public/ URL aggressively;
+// when the stylesheet changes, the edge cache holds the old bytes and visitors
+// see broken layouts (e.g. grid composition post after Spec 02-A landed —
+// production served pre-grid 33KB CSS until query-string changed).
+// Hashing the file content into the query string forces a cache miss whenever
+// the CSS actually changes, with zero cost when it hasn't.
+const cssHash = crypto
+  .createHash('md5')
+  .update(fs.readFileSync('./public/styles/global.css'))
+  .digest('hex')
+  .slice(0, 8);
 ---
 <!doctype html>
 <html lang="en">
@@ -35,7 +50,7 @@ const ogImage = slug
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
-    <link rel="stylesheet" href="/styles/global.css" />
+    <link rel="stylesheet" href={`/styles/global.css?v=${cssHash}`} />
     {/* Inter on <time>/captions — Google Fonts. Fraunces is self-hosted via
         public/fonts/ + @font-face in global.css; do NOT request it here. */}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
