@@ -14,6 +14,13 @@ context/screenshots/
 # Private strategy documents — never commit
 MONETISATION.md
 
+# Unpublished drafts (launch comms, pitches, pricing pages, monetisation
+# infra specs). These are pre-publication artefacts that must stay local.
+# When a draft ships publicly, copy its contents into the relevant public
+# surface (src/content/posts/, pilcrow.press, etc.) — do NOT just remove
+# this ignore.
+drafts/
+
 # Per-package build artifacts
 packages/*/tsconfig.tsbuildinfo
 packages/*/dist/

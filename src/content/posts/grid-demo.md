@@ -2,7 +2,7 @@
 title: "Grid Composition — Three Field Counts"
 description: "A test post exercising the grid editorial primitive (spec 02-A). Three discrete Mila-style field grids (8, 16, 32) with color fields, placeholder image cells, and one cross-primitive case."
 pubDate: 2026-05-17
-draft: true
+draft: false
 tags: ["typography", "pilcrow", "test", "grid"]
 dropCap: true
 ---
