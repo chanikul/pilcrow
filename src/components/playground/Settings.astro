@@ -1,150 +1,48 @@
 ---
 /**
- * Pilcrow Playground — Settings panel (sub-task 6 of PILCROW_PLAYGROUND_PLAN.md).
+ * Pilcrow Playground — Settings panel.
  *
  * Surfaces five typographic controls to the playground user:
- *   1. Font (six-font shortlist)
- *   2. Drop cap (toggle, font-aware — see Q C resolution below)
+ *   1. Font (Level 2: searchable Google Fonts combobox via FontPicker.astro)
+ *   2. Drop cap (toggle, font-aware)
  *   3. Hyphenation (toggle, default ON)
  *   4. Measure (50/60/65/70/75 ch stepper)
  *   5. Line height (1.4/1.5/1.55/1.6/1.7 stepper)
  *
- * Mirrors the editor's pubsub shape: dispatches a typed CustomEvent on
- * `document` (`pilcrow:settings-changed`) with the full settings object plus
- * a `changed` diff hint and a `source` field — the contract sub-task 9
- * (share-URL) builds against. Preview.astro listens and re-typesets.
+ * Level 2 changes (Spec 01):
+ *   - Row 1 (font) is now <FontPicker /> — a D1 combobox backed by
+ *     `src/lib/playground/google-fonts-manifest.json`.
+ *   - `readSettings()` reads the font from `[data-font-picker]`'s
+ *     `data-current-font` attribute (set by FontPicker.astro's hydration).
+ *   - `updateDropCapAvailability()` now accepts a `number | null` weight
+ *     directly (FontPicker derives this from the manifest / runtime detection).
+ *   - A `pilcrow:font-picker-changed` listener drives font-aware controls
+ *     (drop-cap toggle) and triggers a `pilcrow:settings-changed` dispatch
+ *     whenever the user picks a new family.
  *
- * ─── Question A — six-font shortlist (taste call resolved by user) ────────
- *   Fraunces · Newsreader · Source Serif 4 · EB Garamond · Crimson Pro · Literata.
- *   Coverage: display-as-body / body-tuned-modern / transitional / old-style /
- *   contemporary-revival / screen-reading. All open-licensed, all-serif
- *   editorial register (no sans-serif in the body picker), all include a
- *   real italic.
+ * Event contract — FROZEN (Level 1; Level 2 must not break it):
  *
- *   Loading: Fraunces is self-hosted via /public/fonts/ + @font-face in
- *   global.css (matches the wider site). The other five load on the
- *   playground page only via a single Google Fonts CSS2 stylesheet
- *   request — variable axes (opsz, wght, ital) requested as ranges so
- *   future weight/opsz controls work without re-requesting the URL.
- *   The variable-axis-TTF ban from learnings 2026-05-06 applies to the
- *   build pipeline (Playwright/post bodies), NOT to runtime browser
- *   font loading. The playground typesets in the user's browser; Google
- *   Fonts woff2 with axis ranges is fine here.
- *
- * ─── Question B (settings topology) — (b) Two-row ─────────────────────────
- *   Font picker as full-width swatch row on top, other controls (drop cap,
- *   hyphenation, measure, line-height) in a row below. Mobile gets a vertical
- *   stack with horizontal-scroll swatches.
- *
- * ─── Question C (drop-cap font-coupling) — (b) Disabled with tooltip ──────
- *   When the chosen font's static release lacks a 500-or-600 weight,
- *   the drop-cap toggle goes disabled with the tooltip:
- *     "Drop cap requires a 500–600 weight; this font ships only 400/700."
- *   If the user switches to such a font while drop-cap is ON, the toggle
- *   disables and drop-cap silently goes off in the next typeset. None of the
- *   six fonts in the shipped shortlist hit this case (all have 500 or 600),
- *   so the disabled-state is wired but inert today; future shortlist edits
- *   that add a 400/700-only family will trigger it without code changes.
- *
- * ─── Question D (event payload) — (c) Both — full settings + diff + source ─
- *   THE CONTRACT for sub-tasks 8 (copy-HTML) and 9 (share-URL):
- *
- *     type: 'pilcrow:settings-changed'
- *     detail: {
- *       settings: {
- *         font: string;          // family name as it appears in @font-face
- *         dropCap: boolean;
- *         hyphenation: boolean;
- *         measure: number;       // 50 | 60 | 65 | 70 | 75 (ch)
- *         lineHeight: number;    // 1.4 | 1.5 | 1.55 | 1.6 | 1.7
- *       };
- *       changed: 'font' | 'dropCap' | 'hyphenation' | 'measure' |
- *                'lineHeight' | null;
- *       source: 'user' | 'init' | 'restore';
- *     }
- *     dispatched on: document, bubbles: true
- *
- * ─── Stepper UI choice (sub-question of Q B) ──────────────────────────────
- *   Discrete radio buttons in a horizontal row for both measure and
- *   line-height. Reads as a labelled scale at a glance, native focus
- *   management, JS-disabled-friendly. Alternative considered: +/- with
- *   numeric display — rejected because it hides the range and needs JS
- *   to operate. The radio scale is the cleaner UI here.
- *
- * ─── Lazy-load implementation ─────────────────────────────────────────────
- *   Default page load fetches Fraunces only (already shipping). Other fonts
- *   fetch via `await document.fonts.load('400 19px <Family>')` on swatch
- *   click, BEFORE dispatching `pilcrow:settings-changed` so Preview's typeset
- *   sees the loaded font (mirrors the cap-measurement-race fix in
- *   BrowserRenderer.open() — see learnings entry 3, 2026-05-06).
- *
- * ─── JS-disabled fallback ─────────────────────────────────────────────────
- *   Real <input> / <button> form elements render labelled and visible.
- *   The form is non-functional but accessible (radio buttons toggle each
- *   other natively, swatches are <button type="button">). Editor and Preview
- *   keep their own JS-disabled fallbacks (sub-tasks 5 & 7).
- *
- * ─── Visual register ──────────────────────────────────────────────────────
- *   Inter for tool labels (matches editor + the existing settings shell).
- *   Each font swatch shows a sample glyph in that face, then the family name
- *   underneath in Inter — the swatch IS the visual specimen of the font's
- *   character. Controls feel functional, NOT editorial — Fraunces is reserved
- *   for the preview pane (the editorial product the user is here to see).
+ *   type: 'pilcrow:settings-changed'
+ *   detail: {
+ *     settings: {
+ *       font: string;          // full family name
+ *       dropCap: boolean;
+ *       hyphenation: boolean;
+ *       measure: number;       // 50 | 60 | 65 | 70 | 75 (ch)
+ *       lineHeight: number;    // 1.4 | 1.5 | 1.55 | 1.6 | 1.7
+ *     };
+ *     changed: 'font' | 'dropCap' | 'hyphenation' | 'measure' |
+ *              'lineHeight' | null;
+ *     source: 'user' | 'init' | 'restore';
+ *   }
+ *   dispatched on: document, bubbles: true
  */
 
-interface FontConfig {
-  /** Family name — exact match for `@font-face` declaration in global.css. */
-  family: string;
-  /** A short rationale word for the user. Currently unused in UI; kept
-   * inline as the editorial ground truth for sub-task 8/9 prose. */
-  voice: string;
-  /**
-   * Drop-cap weight. Pick the closest editorial bracket the family ships:
-   *   500 (Medium) for body-tuned faces — the standard pick
-   *   600 (SemiBold) for display/transitional faces with a real SemiBold
-   *   700 (Bold) for static releases that lack 500/600 (e.g. Libre
-   *     Baskerville) or for high-contrast didones where the heavier weight
-   *     reads as a deliberate display gesture (e.g. Playfair Display)
-   * `null` means the family lacks all three, so the drop-cap toggle
-   * disables for it. (Per Q C resolution.)
-   */
-  dropCapWeight: 500 | 600 | 700 | null;
-  /** Sample glyph for the swatch — lowercase 'g' is the canonical typographer's
-   * specimen choice. Single-storey vs double-storey, descender shape, bowl
-   * proportion all carry signal at this size. */
-  swatchChar: string;
-}
-
-// Verified against each upstream's Google Fonts release on 2026-05-09.
-// Drop-cap weights pick the closest editorial bracket each family ships
-// (500 Medium for old-style/body-tuned families, 600 SemiBold for
-// transitional/display) — every family in this list has both 500 and 600
-// available via its variable wght axis, so the disabled-state in
-// updateDropCapAvailability() is currently inert. Future shortlist edits
-// that add a 400/700-only family will trigger it without code changes.
-const FONTS: FontConfig[] = [
-  // Row 1
-  { family: 'Fraunces',          voice: 'display-as-body',         dropCapWeight: 600, swatchChar: 'g' },
-  { family: 'Newsreader',        voice: 'body-tuned-modern',       dropCapWeight: 500, swatchChar: 'g' },
-  { family: 'Source Serif 4',    voice: 'transitional',            dropCapWeight: 600, swatchChar: 'g' },
-  { family: 'EB Garamond',       voice: 'old-style',               dropCapWeight: 500, swatchChar: 'g' },
-  { family: 'Crimson Pro',       voice: 'contemporary-revival',    dropCapWeight: 500, swatchChar: 'g' },
-  // Row 2 (added 2026-05-09 expansion to ten)
-  { family: 'Literata',          voice: 'screen-reading',          dropCapWeight: 500, swatchChar: 'g' },
-  { family: 'Lora',              voice: 'workhorse-body',          dropCapWeight: 600, swatchChar: 'g' },
-  { family: 'Libre Baskerville', voice: 'baskerville-revival',     dropCapWeight: 700, swatchChar: 'g' }, // static instances only — no variable axis; 700 is the bold face used as the drop cap
-  { family: 'Alegreya',          voice: 'humanist-italic',         dropCapWeight: 600, swatchChar: 'g' },
-  { family: 'Playfair Display',  voice: 'didone-display',          dropCapWeight: 700, swatchChar: 'g' }, // display-tuned; renders less ideally at body sizes than the others — included for magazine register
-];
+import FontPicker from './FontPicker.astro';
 
 const MEASURES = [50, 60, 65, 70, 75] as const;
 const LINE_HEIGHTS = [1.4, 1.5, 1.55, 1.6, 1.7] as const;
 
-// Defaults — match site canon. Fraunces, 65ch measure, 1.55 line-height.
-// (Site body uses 1.7; the playground's editorial body slug uses 1.55 to
-// match the post-body cascade resolution after BrowserRenderer typeset.
-// 1.55 IS the canonical default per the task brief.)
-const DEFAULT_FONT = 'Fraunces';
 const DEFAULT_DROP_CAP = true;
 const DEFAULT_HYPHENATION = true;
 const DEFAULT_MEASURE = 65;
@@ -154,33 +52,10 @@ const DEFAULT_LINE_HEIGHT = 1.55;
 <h2 id="playground-settings-label" class="settings-label">Settings</h2>
 
 <form class="settings-form" aria-labelledby="playground-settings-label" data-settings-form>
-  {/* ─── Row 1: full-width font swatch picker ─────────────────────── */}
+  {/* ─── Row 1: font picker (Level 2 — searchable combobox) ───────── */}
   <fieldset class="settings-row settings-row-fonts">
     <legend class="settings-legend">Font</legend>
-    <div class="font-swatches" role="radiogroup" aria-label="Body font">
-      {FONTS.map((font) => (
-        <button
-          type="button"
-          class="font-swatch"
-          role="radio"
-          aria-checked={font.family === DEFAULT_FONT ? 'true' : 'false'}
-          data-font={font.family}
-          data-drop-cap-weight={font.dropCapWeight ?? ''}
-        >
-          {/* Swatch glyph — set in Fraunces by default (the only font on
-              first paint). The hydration script swaps each swatch's
-              font-family to its own face AFTER that face's TTFs lazy-load
-              on first selection. This is the deliberate trade-off behind
-              the §6 "initial paint Fraunces only" budget — pre-interaction
-              the swatches read as labelled tiles in Fraunces; post-load
-              each swatch reads as a real specimen of its family. */}
-          <span class="font-swatch-glyph">
-            {font.swatchChar}
-          </span>
-          <span class="font-swatch-label">{font.family}</span>
-        </button>
-      ))}
-    </div>
+    <FontPicker />
   </fieldset>
 
   {/* ─── Row 2: other controls (toggles + steppers) ───────────────── */}
@@ -284,31 +159,19 @@ const DEFAULT_LINE_HEIGHT = 1.55;
 
 <script>
   /**
-   * Settings hydration — wires the swatches/toggles/steppers to the event
-   * contract that Preview.astro (and copy-HTML / share-URL components)
-   * consume. JS-disabled users get a labelled, focusable form that does
-   * nothing — by design.
+   * Settings hydration — Level 2 update (Spec 01).
    *
-   * Lifecycle:
-   *   1. On script load: read defaults from the rendered DOM (the
-   *      default checked/aria-checked state IS the source of truth);
-   *      dispatch `pilcrow:settings-changed` with `source: 'init'` so
-   *      Preview lands its first typeset against the canonical state.
-   *   2. On font swatch click: lazy-load the font's TTF faces via
-   *      `document.fonts.load(...)`, then update the swatch group's
-   *      `aria-checked` state, then dispatch with `source: 'user',
-   *      changed: 'font'`. The order is critical — the load must
-   *      resolve BEFORE the event so Preview's typeset sees the
-   *      correct font metrics (cap-measurement-race learnings #3).
-   *   3. On drop-cap / hyphenation toggle change: dispatch with the
-   *      relevant `changed` value.
-   *   4. On measure / line-height radio change: dispatch.
+   * The swatch-based font picker from Level 1 has been replaced by
+   * FontPicker.astro (a D1 combobox). Settings.astro now:
+   *   - Reads the current font from `[data-font-picker]`'s `data-current-font`
+   *     attribute (managed by FontPicker.astro's hydration script).
+   *   - Listens for `pilcrow:font-picker-changed` events dispatched by
+   *     FontPicker.astro, then updates drop-cap availability and fires
+   *     `pilcrow:settings-changed` with the full settings payload.
+   *   - Everything else (drop-cap toggle, hyphenation, measure, line-height,
+   *     copy-HTML, share-URL) is unchanged from Level 1.
    *
-   * Drop-cap toggle font-awareness:
-   *   The selected swatch's `data-drop-cap-weight` attribute is the source
-   *   of truth. Empty/missing → font lacks 500 and 600 → toggle disables
-   *   with tooltip + drop-cap silently goes OFF in the dispatched payload.
-   *   Non-empty (500 or 600) → toggle enabled, retains user's last value.
+   * The `pilcrow:settings-changed` contract is frozen and must not change.
    */
 
   interface PlaygroundSettings {
@@ -327,15 +190,21 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     source: DispatchSource;
   }
 
+  interface FontPickerChangedDetail {
+    family: string;
+    dropCapWeight: number | null;
+    isCustom: boolean;
+  }
+
+  interface PlaygroundWindow extends Window {
+    __pilcrowSettings?: PlaygroundSettings;
+  }
+
   const form = document.querySelector<HTMLFormElement>('[data-settings-form]');
   if (form) {
-    const swatches = Array.from(
-      form.querySelectorAll<HTMLButtonElement>('.font-swatch'),
-    );
+    const fontPickerEl = form.querySelector<HTMLDivElement>('[data-font-picker]');
     const dropCapInput = form.querySelector<HTMLInputElement>('[data-drop-cap]');
-    const hyphenationInput = form.querySelector<HTMLInputElement>(
-      '[data-hyphenation]',
-    );
+    const hyphenationInput = form.querySelector<HTMLInputElement>('[data-hyphenation]');
     const measureInputs = Array.from(
       form.querySelectorAll<HTMLInputElement>('[data-measure]'),
     );
@@ -345,40 +214,33 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     const dropCapToggleLabel =
       dropCapInput?.closest<HTMLLabelElement>('.toggle-label') ?? null;
 
+    // Track the active drop-cap weight for the current font. Updated on
+    // `pilcrow:font-picker-changed` events. Used by buildInlinedCSS so
+    // the copy-HTML output carries the correct drop-cap weight.
+    let activeDropCapWeight: number | null = 600; // Fraunces default
+
     // ─── Read current state from DOM (post-default rendering) ───────────
+    // Level 2: font is read from the FontPicker host's `data-current-font`
+    // attribute, not from swatch aria-checked states (swatches are gone).
     const readSettings = (): PlaygroundSettings => {
-      const checkedSwatch =
-        swatches.find((s) => s.getAttribute('aria-checked') === 'true') ??
-        swatches[0];
-      const font = checkedSwatch?.dataset.font ?? 'Fraunces';
+      const font = fontPickerEl?.dataset.currentFont ?? 'Fraunces';
       const dropCap = dropCapInput?.checked ?? true;
       const hyphenation = hyphenationInput?.checked ?? true;
-      const measureRadio =
-        measureInputs.find((i) => i.checked) ?? measureInputs[0];
+      const measureRadio = measureInputs.find((i) => i.checked) ?? measureInputs[0];
       const measure = measureRadio ? Number(measureRadio.value) : 65;
-      const lineHeightRadio =
-        lineHeightInputs.find((i) => i.checked) ?? lineHeightInputs[0];
-      const lineHeight = lineHeightRadio
-        ? Number(lineHeightRadio.value)
-        : 1.55;
+      const lineHeightRadio = lineHeightInputs.find((i) => i.checked) ?? lineHeightInputs[0];
+      const lineHeight = lineHeightRadio ? Number(lineHeightRadio.value) : 1.55;
       return { font, dropCap, hyphenation, measure, lineHeight };
     };
 
-    // ─── Drop-cap-by-font enforcement (Q C) ─────────────────────────────
-    // After a font selection, if the selected font lacks any editorial
-    // drop-cap weight (500/600/700), the drop-cap toggle is disabled. We
-    // also clear `checked` (silently fall the value to OFF) AND set a
-    // title attribute as the tooltip. 700 was added in the 10-font
-    // expansion: Libre Baskerville ships only 400/700 statics, and
-    // Playfair Display takes 700 deliberately as a high-contrast didone
-    // gesture. Both are valid drop-cap weights; the disabled-state only
-    // fires for a future addition that lacks all three.
-    const updateDropCapAvailability = (fontFamily: string): void => {
-      const swatch = swatches.find((s) => s.dataset.font === fontFamily);
-      const weightStr = swatch?.dataset.dropCapWeight ?? '';
-      const hasWeight =
-        weightStr === '500' || weightStr === '600' || weightStr === '700';
+    // ─── Drop-cap-by-font enforcement ─────────────────────────────────────
+    // Level 2: `updateDropCapAvailability` now accepts a `number | null`
+    // weight directly from the FontPicker event detail (manifest-derived or
+    // runtime-detected), instead of looking up a swatch's data attribute.
+    // The disable-with-tooltip logic is unchanged from Level 1.
+    const updateDropCapAvailability = (dropCapWeight: number | null): void => {
       if (!dropCapInput || !dropCapToggleLabel) return;
+      const hasWeight = dropCapWeight !== null;
       if (hasWeight) {
         dropCapInput.disabled = false;
         dropCapToggleLabel.removeAttribute('title');
@@ -392,189 +254,38 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       }
     };
 
-    // ─── Event dispatch ─────────────────────────────────────────────────
-    // Stores the latest settings on `window` AS WELL AS dispatching the
-    // event, so listeners attached late (e.g. Preview.astro's listener
-    // after its dynamic `import` resolves) can read the current state
-    // even if they missed an earlier dispatch. Sub-task 9 (share-URL)
-    // can also read this synchronously without re-dispatching.
-    interface PlaygroundWindow extends Window {
-      __pilcrowSettings?: PlaygroundSettings;
-    }
-    const dispatch = (
-      changed: SettingsKey | null,
-      source: DispatchSource,
-    ): void => {
+    // ─── Event dispatch ──────────────────────────────────────────────────
+    const dispatch = (changed: SettingsKey | null, source: DispatchSource): void => {
       const settings = readSettings();
       (window as PlaygroundWindow).__pilcrowSettings = settings;
       const event = new CustomEvent<SettingsChangedDetail>(
         'pilcrow:settings-changed',
-        {
-          detail: { settings, changed, source },
-          bubbles: true,
-        },
+        { detail: { settings, changed, source }, bubbles: true },
       );
       document.dispatchEvent(event);
     };
 
-    // Update a swatch's own font-family AFTER its font has loaded, so the
-    // swatch becomes a real specimen of its face. (Pre-load, all swatches
-    // render in Fraunces — see the @{font.family} comment in the markup.)
-    // All six families in the current shortlist are serifs; the fallback
-    // stack is uniform.
-    const stylizeSwatch = (family: string): void => {
-      const swatch = swatches.find((s) => s.dataset.font === family);
-      const glyph = swatch?.querySelector<HTMLElement>('.font-swatch-glyph');
-      if (!glyph) return;
-      const familyToken = family.includes(' ') ? `"${family}"` : family;
-      glyph.style.fontFamily = `${familyToken}, ui-serif, Georgia, "Times New Roman", serif`;
-    };
+    // ─── Listen for FontPicker font changes ──────────────────────────────
+    // FontPicker.astro dispatches `pilcrow:font-picker-changed` after each
+    // successful font load. We update drop-cap availability and fire the
+    // full settings-changed event with `changed: 'font'`.
+    document.addEventListener('pilcrow:font-picker-changed', (ev) => {
+      const detail = (ev as CustomEvent<FontPickerChangedDetail>).detail;
+      if (!detail) return;
+      activeDropCapWeight = detail.dropCapWeight;
+      updateDropCapAvailability(detail.dropCapWeight);
+      dispatch('font', 'user');
+    });
 
-    // ─── Font lazy-load (per learning entry 3, 2026-05-06) ───────────────
-    // `document.fonts.load(...)` fetches the TTF if not already cached and
-    // registers it for canvas measurement. Issuing it for every weight/style
-    // we declared in @font-face for that family ensures the BrowserRenderer
-    // sees the correct metrics on its first typeset after the family change.
-    // Mirrors BrowserRenderer.open()'s eager Fraunces load.
-    const loadFont = async (family: string): Promise<void> => {
-      if (family === 'Fraunces') return; // already shipping in initial paint
-      const swatch = swatches.find((s) => s.dataset.font === family);
-      const dropCapWeightStr = swatch?.dataset.dropCapWeight ?? '';
-      const familyToken = family.includes(' ') ? `"${family}"` : family;
-      const promises: Promise<FontFace[]>[] = [
-        document.fonts.load(`400 19px ${familyToken}`),
-        document.fonts.load(`700 19px ${familyToken}`),
-        document.fonts.load(`italic 400 19px ${familyToken}`),
-      ];
-      // 700 is already loaded above (body bold). Only 500/600 need an
-      // explicit extra fetch; 700 drop-caps reuse the body-bold face.
-      if (dropCapWeightStr === '500' || dropCapWeightStr === '600') {
-        promises.push(
-          document.fonts.load(`${dropCapWeightStr} 19px ${familyToken}`),
-        );
-      }
-      await Promise.all(promises);
-    };
-
-    // ─── Eager-load swatch specimens (sub-task 6 follow-up fix) ──────────
-    // The lazy-load policy above keeps body-rendering weights (SemiBold/Bold/
-    // Italic) deferred to swatch click — that's still correct for the body
-    // payload budget. But the SWATCH GLYPHS themselves need their family's
-    // Regular 400 loaded at page-load, otherwise all six swatches paint in
-    // the cascade fallback and look identical.
-    //
-    // After the 2026-05-09 Google-Fonts migration, the five non-Fraunces
-    // families now resolve via Google Fonts woff2 instead of self-hosted
-    // TTFs. The Google Fonts CSS2 stylesheet is loaded on the playground
-    // page (see playground/index.astro), so each `document.fonts.load(...)`
-    // here triggers the woff2 fetch for that specific weight. Subsetting
-    // is handled upstream by Google's CSS2 endpoint via unicode-range, so
-    // the per-family payload is dramatically smaller than the previous
-    // self-hosted-TTF flow (~30-60 KB per family vs ~120-600 KB).
-    //
-    // Stylize each swatch AFTER its font load resolves so the glyph paints
-    // in its real face the moment the bytes arrive (not waiting for click).
-    const eagerLoadSwatchSpecimens = (): void => {
-      for (const family of FONTS_FOR_EAGER_LOAD) {
-        if (family === 'Fraunces') {
-          stylizeSwatch('Fraunces');
-          continue;
-        }
-        const familyToken = family.includes(' ') ? `"${family}"` : family;
-        document.fonts
-          .load(`400 19px ${familyToken}`)
-          .then(() => stylizeSwatch(family))
-          .catch((err) => {
-            // Surface to console; the swatch will fall back to the CSS
-            // font-family declaration's fallback stack — readable but not
-            // a true specimen.
-            // eslint-disable-next-line no-console
-            console.warn(
-              `[pilcrow:settings] eager swatch load failed for ${family}:`,
-              err,
-            );
-          });
-      }
-    };
-    const FONTS_FOR_EAGER_LOAD = [
-      'Fraunces',
-      'Newsreader',
-      'Source Serif 4',
-      'EB Garamond',
-      'Crimson Pro',
-      'Literata',
-      'Lora',
-      'Libre Baskerville',
-      'Alegreya',
-      'Playfair Display',
-    ];
-
-    // ─── Wire swatches ──────────────────────────────────────────────────
-    for (const swatch of swatches) {
-      swatch.addEventListener('click', async () => {
-        const family = swatch.dataset.font ?? 'Fraunces';
-        // Already selected? No-op (would also re-fire the event, harmless
-        // but noisy in a console).
-        if (swatch.getAttribute('aria-checked') === 'true') return;
-
-        // Lazy-load BEFORE updating selection state — guarantees the
-        // dispatched event lands with the font already available.
-        try {
-          await loadFont(family);
-          stylizeSwatch(family);
-        } catch (err) {
-          // Even if the load fails (network blocked, etc.), still update
-          // the UI — the user's choice should be respected. The browser
-          // will fall back to the next face in the family stack at render
-          // time. Surface to console so it's visible in DevTools.
-          // eslint-disable-next-line no-console
-          console.warn(`[pilcrow:settings] font load failed for ${family}:`, err);
-        }
-
-        // Update aria-checked state across the radiogroup.
-        for (const s of swatches) {
-          s.setAttribute(
-            'aria-checked',
-            s === swatch ? 'true' : 'false',
-          );
-        }
-
-        // Update drop-cap availability based on the new font's weights.
-        updateDropCapAvailability(family);
-
-        dispatch('font', 'user');
-      });
-
-      // Keyboard support: Enter / Space activate the swatch as if clicked.
-      // Buttons handle this natively, but role="radio" expects arrow-key
-      // navigation. Implement Left/Right arrows to move within the group.
-      swatch.addEventListener('keydown', (ev) => {
-        if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') return;
-        ev.preventDefault();
-        const idx = swatches.indexOf(swatch);
-        const delta = ev.key === 'ArrowRight' ? 1 : -1;
-        const nextIdx = (idx + delta + swatches.length) % swatches.length;
-        const next = swatches[nextIdx];
-        if (next) {
-          next.focus();
-          next.click();
-        }
-      });
-    }
-
-    // ─── Wire drop-cap / hyphenation ────────────────────────────────────
+    // ─── Wire drop-cap / hyphenation ─────────────────────────────────────
     if (dropCapInput) {
-      dropCapInput.addEventListener('change', () => {
-        dispatch('dropCap', 'user');
-      });
+      dropCapInput.addEventListener('change', () => dispatch('dropCap', 'user'));
     }
     if (hyphenationInput) {
-      hyphenationInput.addEventListener('change', () => {
-        dispatch('hyphenation', 'user');
-      });
+      hyphenationInput.addEventListener('change', () => dispatch('hyphenation', 'user'));
     }
 
-    // ─── Wire measure / line-height steppers ────────────────────────────
+    // ─── Wire measure / line-height steppers ─────────────────────────────
     for (const input of measureInputs) {
       input.addEventListener('change', () => {
         if (input.checked) dispatch('measure', 'user');
@@ -586,117 +297,31 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       });
     }
 
-    // ─── Initial dispatch (THE init contract) ───────────────────────────
-    // Preview.astro's hard-coded dropCap:true / 65ch / 1.7 / Fraunces
-    // defaults are GONE in sub-task 6 — the renderer now waits for this
-    // dispatch to land its first canonical typeset. Source: 'init'.
-    //
-    // We dispatch on next microtask so any `pilcrow:settings-changed`
-    // listener attached in the SAME script-run order has a chance to
-    // attach first. (Astro's <script> tags execute in document order;
-    // Preview.astro's hydration runs before this Settings hydration when
-    // Preview comes earlier in the DOM. To be safe, we use queueMicrotask
-    // — Preview's listener attaches synchronously inside its own script,
-    // so by the time we reach the microtask queue both listeners exist.)
-    // Fraunces is already loaded (initial paint requirement) — apply its
-    // font-family to its swatch synchronously so the user sees the real
-    // Fraunces 'A' specimen on first render. Other five families have
-    // their Regular 400 fetched in parallel; their swatches stylize as
-    // each load resolves (~one network round-trip after first paint).
-    eagerLoadSwatchSpecimens();
-
-    // Init dispatch — yield via setTimeout(0) so any consumer that
-    // attached its listener inside an async ES module import (Preview.astro
-    // imports BrowserRenderer dynamically, so its listener attaches one
-    // microtask AFTER this Settings module body) has time to register.
-    // We ALSO write to `window.__pilcrowSettings` inside dispatch() above,
-    // which lets late attachers recover the state without re-dispatching.
+    // ─── Initial dispatch (THE init contract) ────────────────────────────
+    // Unchanged from Level 1: yield via setTimeout(0) so Preview.astro's
+    // listener (attached one microtask after Settings.astro's synchronous
+    // body) has time to register (learnings 2026-05-07).
+    // Initial drop-cap weight: Fraunces = 600 (manifest dropCapWeightOverride).
     setTimeout(() => {
-      const initial = readSettings();
-      updateDropCapAvailability(initial.font);
+      updateDropCapAvailability(activeDropCapWeight);
       dispatch(null, 'init');
     }, 0);
 
-    // ─── Copy-HTML action (sub-task 8) ──────────────────────────────────
-    // Reads the live preview host (`#playground-preview-host`), wraps it
-    // in a self-contained HTML document containing:
-    //   - a Google Fonts <link rel="stylesheet"> for the currently selected
-    //     font (variable axes requested as ranges; ~5 KB CSS + on-demand
-    //     woff2 fetches) — replaces the prior pilcrow.page/*.ttf
-    //     @font-face inlining (2026-05-09 migration)
-    //   - the small set of measurement-critical rules from global.css
-    //     (`html` font-size, body font-family, .post-body, .pt-line,
-    //     .lede .drop-cap, .visually-hidden) — only the rules the typeset
-    //     output actually uses, NOT the full editorial stylesheet
-    //   - an HTML comment about font origin
-    // Portable: paste the clipboard into any HTML file and the typeset
-    // output renders with fonts served by Google Fonts.
-    //
-    // Limitations (acknowledged for v0): styles for sidenotes, footnotes,
-    // pull quotes are not included. If the user's pasted markdown uses
-    // those primitives, those parts will render unstyled in the copied
-    // output. This is the simplest correct thing to ship first.
-    const copyButton = document.querySelector<HTMLButtonElement>(
-      '[data-copy-html]',
-    );
-    const copyLabel = document.querySelector<HTMLSpanElement>(
-      '[data-copy-html-label]',
-    );
+    // ─── Copy-HTML action ────────────────────────────────────────────────
+    // Level 2 update: buildGoogleFontsURL now uses `buildCopyHTMLFontsURL`
+    // from `google-fonts.ts` for non-manifest and custom families. For the
+    // copy-HTML drop-cap weight, use `activeDropCapWeight` (set by the
+    // `pilcrow:font-picker-changed` listener) rather than a swatch lookup.
+    const copyButton = document.querySelector<HTMLButtonElement>('[data-copy-html]');
+    const copyLabel = document.querySelector<HTMLSpanElement>('[data-copy-html-label]');
 
-    /**
-     * Per-family Google Fonts CSS2 URL fragment (everything after `family=`,
-     * before any `&family=` joiner). Variable axes are requested as ranges
-     * (wght 400..700, plus opsz where the family ships an opsz axis) so the
-     * one stylesheet covers body + drop-cap + bold + italic 400 with no
-     * extra requests. `display=swap` is appended at the URL boundary, not
-     * here.
-     */
-    const FONT_GOOGLE_QUERY: Record<string, string> = {
-      'Fraunces':
-        'Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400',
-      'Newsreader':
-        'Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400',
-      'Source Serif 4':
-        'Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400',
-      'EB Garamond':
-        'EB+Garamond:ital,wght@0,400..700;1,400',
-      'Crimson Pro':
-        'Crimson+Pro:ital,wght@0,400..700;1,400',
-      'Literata':
-        'Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400',
-      'Lora':
-        'Lora:ital,wght@0,400..700;1,400',
-      // Libre Baskerville ships only static instances (no variable axis).
-      // We request 400 + 700 explicitly + italic 400.
-      'Libre Baskerville':
-        'Libre+Baskerville:ital,wght@0,400;0,700;1,400',
-      'Alegreya':
-        'Alegreya:ital,wght@0,400..700;1,400',
-      'Playfair Display':
-        'Playfair+Display:ital,wght@0,400..700;1,400',
-    };
-    const FONT_GOOGLE_BASE = 'https://fonts.googleapis.com/css2';
-
-    /** Build the absolute Google Fonts CSS2 URL for a single chosen family. */
-    const buildGoogleFontsURL = (family: string): string => {
-      const query = FONT_GOOGLE_QUERY[family] ?? FONT_GOOGLE_QUERY['Fraunces'];
-      return `${FONT_GOOGLE_BASE}?family=${query}&display=swap`;
-    };
-
-    /**
-     * Build the inlined CSS block for the chosen font + measurement
-     * settings. Only includes rules the typeset output actually uses.
-     * Note: the @font-face declarations are NOT inlined here — the
-     * Google Fonts stylesheet is referenced from a <link> tag in the
-     * <head> of the exported document (see buildCopyableHTML below).
-     */
     const buildInlinedCSS = (settings: PlaygroundSettings): string => {
       const familyToken = `"${settings.font}"`;
       const fontStack = `${familyToken}, ui-serif, Georgia, "Times New Roman", serif`;
-      const dropCapSwatch = swatches.find(
-        (s) => s.dataset.font === settings.font,
-      );
-      const dropCapWeight = dropCapSwatch?.dataset.dropCapWeight ?? '600';
+      // Use activeDropCapWeight (updated on every font-picker-changed event).
+      // Fall back to 600 (a safe editorial default) for families where the
+      // picker hasn't fired yet (e.g. on the initial Fraunces render).
+      const dropCapWeight = activeDropCapWeight ?? 600;
       return [
         `html { font-size: 19px; }`,
         `body {`,
@@ -734,19 +359,30 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       ].join('\n');
     };
 
-    /**
-     * Compose the full self-contained HTML payload around the live preview
-     * host's innerHTML. Returns `null` if the preview host isn't present
-     * (defensive — Preview.astro always renders it, but a surgical edit
-     * could remove it).
-     */
+    // Build a Google Fonts CSS2 URL for the given family for use in the
+    // exported copy-HTML document. Uses explicit weight list derived from
+    // the active drop-cap weight to keep the export minimal.
+    const buildCopyFontsURL = (settings: PlaygroundSettings): string => {
+      const family = settings.font;
+      const encodedFamily = family.replace(/ /g, '+');
+      const base = 'https://fonts.googleapis.com/css2';
+      // Body-relevant weight list: 400 + dropCapWeight (if set) + 700.
+      const weightNums = Array.from(
+        new Set([400, ...(activeDropCapWeight !== null ? [activeDropCapWeight] : []), 700]),
+      ).sort((a, b) => a - b);
+      const uprightTuples = weightNums.map((w) => `0,${w}`).join(';');
+      // Request italic 400 (omit if the family has no italic — API is
+      // permissive and simply returns what exists).
+      return `${base}?family=${encodedFamily}:ital,wght@${uprightTuples};1,400&display=swap`;
+    };
+
     const buildCopyableHTML = (): string | null => {
       const host = document.getElementById('playground-preview-host');
       if (!host) return null;
       const settings: PlaygroundSettings =
         (window as PlaygroundWindow).__pilcrowSettings ?? readSettings();
       const css = buildInlinedCSS(settings);
-      const fontsURL = buildGoogleFontsURL(settings.font);
+      const fontsURL = buildCopyFontsURL(settings);
       const innerHTML = host.innerHTML;
       return [
         `<!DOCTYPE html>`,
@@ -777,9 +413,7 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     if (copyButton && copyLabel) {
       const REVERT_MS = 1500;
       let revertTimer: number | null = null;
-      const setLabel = (text: string): void => {
-        copyLabel.textContent = text;
-      };
+      const setLabel = (text: string): void => { copyLabel.textContent = text; };
       const scheduleRevert = (): void => {
         if (revertTimer !== null) window.clearTimeout(revertTimer);
         revertTimer = window.setTimeout(() => {
@@ -814,31 +448,14 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       });
     }
 
-    // ─── Share-URL action (sub-task 9) ──────────────────────────────────
-    // Encodes the current playground state (settings + markdown) into the
-    // URL hash via lz-string. The encoded hash is written to clipboard
-    // (same pattern as copy-HTML). URL update: ONLY on Share button click —
-    // not on every keystroke or settings change (avoids browser-history
-    // pollution). The `source: 'restore'` event contract is handled in
-    // index.astro's page-load script, which reads the hash and dispatches.
-    //
-    // Long-URL degradation: if the encoded hash exceeds SHARE_URL_LONG_THRESHOLD
-    // characters, the feedback label becomes "Copied — long URL" instead of
-    // "Copied!" so the user knows some sharing surfaces may truncate.
-    // No modal, no blocking error — silent degradation per Pilcrow restraint.
-    const shareButton = document.querySelector<HTMLButtonElement>(
-      '[data-share-url]',
-    );
-    const shareLabel = document.querySelector<HTMLSpanElement>(
-      '[data-share-url-label]',
-    );
+    // ─── Share-URL action (unchanged from Level 1) ────────────────────────
+    const shareButton = document.querySelector<HTMLButtonElement>('[data-share-url]');
+    const shareLabel = document.querySelector<HTMLSpanElement>('[data-share-url-label]');
 
     if (shareButton && shareLabel) {
       const SHARE_REVERT_MS = 1500;
       let shareRevertTimer: number | null = null;
-      const setShareLabel = (text: string): void => {
-        shareLabel.textContent = text;
-      };
+      const setShareLabel = (text: string): void => { shareLabel.textContent = text; };
       const scheduleShareRevert = (): void => {
         if (shareRevertTimer !== null) window.clearTimeout(shareRevertTimer);
         shareRevertTimer = window.setTimeout(() => {
@@ -849,29 +466,19 @@ const DEFAULT_LINE_HEIGHT = 1.55;
       };
 
       shareButton.addEventListener('click', async () => {
-        // Read current markdown from the textarea.
         const textarea = document.getElementById(
           'playground-editor-textarea',
         ) as HTMLTextAreaElement | null;
         const markdown = textarea?.value ?? '';
-
-        // Read current settings from window mirror or DOM.
         const settings: PlaygroundSettings =
           (window as PlaygroundWindow).__pilcrowSettings ?? readSettings();
 
-        // Import encode helpers dynamically — keeps the initial script
-        // bundle lean (the lz-string module is only needed on Share click).
         const { encodeShareURL, SHARE_URL_LONG_THRESHOLD } = await import(
           '../../lib/playground/share-url.ts'
         );
-
         const hash = encodeShareURL({ settings, markdown });
-
-        // Write hash to window.location.hash BEFORE writing to clipboard
-        // so the clipboard gets the fully-qualified URL with the hash.
-        window.location.hash = hash.slice(1); // hash without the leading '#'
+        window.location.hash = hash.slice(1);
         const shareURL = window.location.href;
-
         const isLong = hash.length > SHARE_URL_LONG_THRESHOLD;
 
         try {
@@ -882,7 +489,6 @@ const DEFAULT_LINE_HEIGHT = 1.55;
         } catch (err) {
           // eslint-disable-next-line no-console
           console.warn('[pilcrow:share-url] clipboard write failed:', err);
-          // Even if clipboard fails, the hash is in the address bar.
           setShareLabel('URL updated');
           shareButton.setAttribute('data-state', 'success');
           scheduleShareRevert();
@@ -930,88 +536,10 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     padding: 0;
   }
 
-  /* ─── Row 1 — font swatches ──────────────────────────────────────────── */
-  /* Five columns × two rows = ten swatches. The 5-up split keeps each
-     specimen wide enough for the lowercase g to read at 1.75rem; the
-     2026-05-09 expansion from six to ten preserved the swatch geometry by
-     dropping the column count from 6 to 5 rather than shrinking the cells. */
-  .font-swatches {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 0.5rem;
-  }
-
-  .font-swatch {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    padding: 0.75rem 0.5rem;
-    border: 1px solid var(--rule);
-    background: var(--paper);
-    color: var(--ink);
-    cursor: pointer;
-    /* Reset some <button> defaults */
-    font: inherit;
-    text-align: center;
-    transition: border-color 120ms ease, color 120ms ease;
-  }
-
-  .font-swatch:hover {
-    border-color: var(--ink);
-  }
-
-  .font-swatch:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
-  /* Selected swatch — accent rule on the bottom edge AND ink border. */
-  .font-swatch[aria-checked='true'] {
-    border-color: var(--ink);
-    box-shadow: inset 0 -3px 0 0 var(--accent);
-  }
-
-  /* The big specimen glyph — set in the actual font so the swatch IS the
-     visual sample. Per-swatch font-family targets each font's @font-face
-     family by data-font attribute. The script also sets font-family inline
-     once the lazy-loaded TTF has resolved (mirrors stylizeSwatch); the CSS
-     declarations here exist so JS-disabled users still get the right face
-     (browser fetches the @font-face TTF on demand for the rule below) and
-     so the rendering converges immediately when the eager-loaded Regular
-     400 byte arrives — the cascade fallback only kicks in for the brief
-     window before that load resolves. */
-  .font-swatch-glyph {
-    font-size: 1.75rem;
-    font-weight: 700;
-    line-height: 1;
-    color: var(--ink);
-    /* Subtle italic-on-accent treatment dropped — too cute. Keep upright. */
-  }
-  .font-swatch[data-font='Fraunces']          .font-swatch-glyph { font-family: "Fraunces",          ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Newsreader']        .font-swatch-glyph { font-family: "Newsreader",        ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Source Serif 4']    .font-swatch-glyph { font-family: "Source Serif 4",    ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='EB Garamond']       .font-swatch-glyph { font-family: "EB Garamond",       ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Crimson Pro']       .font-swatch-glyph { font-family: "Crimson Pro",       ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Literata']          .font-swatch-glyph { font-family: "Literata",          ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Lora']              .font-swatch-glyph { font-family: "Lora",              ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Libre Baskerville'] .font-swatch-glyph { font-family: "Libre Baskerville", ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Alegreya']          .font-swatch-glyph { font-family: "Alegreya",          ui-serif, Georgia, "Times New Roman", serif; }
-  .font-swatch[data-font='Playfair Display']  .font-swatch-glyph { font-family: "Playfair Display",  ui-serif, Georgia, "Times New Roman", serif; }
-
-  .font-swatch-label {
-    font-family: 'Inter', system-ui, sans-serif;
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--muted);
-    line-height: 1.2;
-    /* Truncate gracefully if a future font name overflows. */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
-  }
+  /* ─── Row 1 — font picker (Level 2: FontPicker.astro) ──────────────────
+     The swatch grid from Level 1 is gone. FontPicker.astro owns all
+     font-row layout and style. Settings.astro just gives it the fieldset
+     shell (settings-row-fonts) and the legend. */
 
   /* ─── Row 2 — controls ───────────────────────────────────────────────── */
   /* Five cells: drop-cap, hyphenation, measure stepper, line-height stepper,
@@ -1191,23 +719,8 @@ const DEFAULT_LINE_HEIGHT = 1.55;
     color: var(--muted);
   }
 
-  /* ─── Mobile (<768px) — vertical stack, horizontal-scroll swatches ────── */
+  /* ─── Mobile (<768px) ──────────────────────────────────────────────────── */
   @media (max-width: 767px) {
-    .font-swatches {
-      grid-template-columns: none;
-      grid-auto-flow: column;
-      grid-auto-columns: 7rem;
-      overflow-x: auto;
-      /* Some breathing room so the rightmost swatch isn't flush with the
-         pane edge. */
-      padding-bottom: 0.25rem;
-      scroll-snap-type: x mandatory;
-    }
-
-    .font-swatch {
-      scroll-snap-align: start;
-    }
-
     .settings-row-controls {
       grid-template-columns: 1fr;
       gap: 1rem;

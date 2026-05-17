@@ -1,0 +1,1274 @@
+---
+/**
+ * GridEditor — Pilcrow grid composition editor component (Spec 02-B).
+ *
+ * Third commit within 02-B: adds B4a (top toolbar with Add cell + field-count
+ * switcher; right-click context menu with Delete/Duplicate/Move) + refined
+ * ArrowUp/Down keyboard navigation using actual grid geometry rather than
+ * DOM-index approximation. Previous commits: render+select+nav (skeleton);
+ * inline contenteditable + floating cell-metadata toolbar.
+ *
+ * Locked taste calls (per spec 02-B):
+ *   B1a  — Astro + vanilla TS
+ *   B2a  — Inline contenteditable [SHIPPED]
+ *   B3a  — Plain text only, no markdown rendering in editor
+ *   B4a  — Toolbar + right-click context menu [SHIPPED in this commit]
+ *   B5a-meta — Floating toolbar on cell select [SHIPPED]
+ *   B6c  — Same UI on mobile, grid collapses to single column
+ *
+ * Props:
+ *   initialMarkdown — directive markdown to load; empty string for fresh editor
+ *   defaultFields   — fallback field count if initialMarkdown is empty (8/16/32)
+ *   id              — stable DOM id for the editor container (a11y anchor)
+ *
+ * Event contract (extended in this commit — backwards compatible):
+ *   type: 'pilcrow:grid-editor-changed'
+ *   detail: { markdown: string, source: 'init' | 'user' | 'restore' }
+ *   dispatched on: the editor container element, bubbles: true
+ *
+ *   'user' fires after any cell mutation (text edit, fill change, kind switch,
+ *   span resize) on a 250ms debounce — typing latency feels instant; hosts
+ *   don't get spammed.
+ *
+ * Edit mode lifecycle:
+ *   - Trigger: Enter on focused text cell, OR double-click on text cell content
+ *   - Cell body becomes contenteditable=plaintext-only (sidesteps rich-paste
+ *     and Cmd-B/I formatting key risks per B3a)
+ *   - On input: debounced commit of cell.text to in-memory doc + 'user' event
+ *   - Exit: Esc (commit + exit), Tab (commit + exit + move focus), click
+ *     outside cell (commit + exit), or focus leaves cell content (commit)
+ *   - Image / empty cells cannot enter edit mode (toolbar is their only edit
+ *     surface)
+ *
+ * Floating toolbar (B5a-meta):
+ *   - Appears when a cell is selected; hides on deselect
+ *   - Stays visible during edit mode (user may want to change kind/fill while
+ *     content-editing)
+ *   - Position: 8px above selected cell if room (cell.top - editor.top >=
+ *     toolbar.height + 16); otherwise 8px below. Horizontal: align with cell
+ *     left edge; clamp within editor bounds so toolbar can't overflow.
+ *   - Three control groups: kind (text/image/empty), fill (none/paper/muted/
+ *     accent/rule), span (cols+−, rows+−). All changes commit + dispatch.
+ *
+ * State mutation pattern:
+ *   - `doc` is held in closure per-editor instance, MUTABLE
+ *   - `commit(mutator)` applies a partial-update mutator function to the doc,
+ *     then re-renders only the affected cell (or full grid for structural
+ *     changes), updates ARIA, dispatches debounced 'user' event
+ *   - Subset re-render preserves focus + selection state across edits
+ *
+ * Precedent files:
+ *   src/components/playground/FontPicker.astro — vanilla-TS hydration pattern
+ *   src/components/playground/Editor.astro     — event-driven editor precedent
+ *   src/lib/grid/{grid-document,parse-directive,serialize-directive}.ts
+ */
+
+import type { GridFields } from '../../lib/grid/grid-document.js';
+
+interface Props {
+  initialMarkdown?: string;
+  defaultFields?: GridFields;
+  id: string;
+}
+
+const { initialMarkdown = '', defaultFields = 8, id } = Astro.props;
+---
+
+<div
+  class="grid-editor"
+  id={id}
+  data-grid-editor
+  data-default-fields={defaultFields}
+>
+  <!--
+    Initial markdown is passed as the textContent of a hidden script tag.
+    Astro's set:html would HTML-escape; a <script type="text/markdown"> stays
+    inert in the browser, preserves whitespace and special chars exactly, and
+    is readable from the hydration script via textContent. Same approach
+    FontPicker.astro uses for the manifest JSON.
+  -->
+  <script
+    type="text/markdown"
+    data-initial-markdown
+    set:html={initialMarkdown}
+  />
+
+  <!-- Status region for screen-reader announcements. Polite, so it doesn't
+       interrupt typing or navigation. -->
+  <div class="grid-editor-status" aria-live="polite" data-status>
+    Loading editor…
+  </div>
+
+  <!-- Top toolbar (B4a — global controls for the grid itself).
+       Always visible. Contains: field-count switcher (8/16/32) + Add cell
+       button. Field-count change is a structural mutation (full grid rerender).
+       Add cell appends a new text cell to next free position via implicit flow. -->
+  <div class="grid-editor-top-toolbar" data-top-toolbar>
+    <div class="grid-editor-top-toolbar-group">
+      <label for="" class="grid-editor-top-toolbar-label">Grid:</label>
+      <div class="grid-editor-top-toolbar-segmented" role="radiogroup" aria-label="Grid field count">
+        <label>
+          <input type="radio" name={`fields-${id}`} value="8" data-fields-radio />
+          <span>8</span>
+        </label>
+        <label>
+          <input type="radio" name={`fields-${id}`} value="16" data-fields-radio />
+          <span>16</span>
+        </label>
+        <label>
+          <input type="radio" name={`fields-${id}`} value="32" data-fields-radio />
+          <span>32</span>
+        </label>
+      </div>
+    </div>
+    <button type="button" class="grid-editor-add-cell" data-add-cell>+ Add cell</button>
+    <span class="grid-editor-cell-count" data-cell-count></span>
+  </div>
+
+  <!-- Wrapper holds grid + floating cell-metadata toolbar + context menu.
+       position: relative so the toolbar's position: absolute is anchored to
+       the editor rather than the page. -->
+  <div class="grid-editor-canvas" data-canvas>
+    <!-- The grid itself. role="grid" + aria-rowcount/colcount/aria-rowindex on
+         cells gives screen readers a proper grid mental model. -->
+    <div
+      class="grid-editor-grid"
+      role="grid"
+      aria-label="Grid composition editor"
+      data-grid
+    >
+      <!-- Cells injected by hydration script. -->
+    </div>
+
+    <!-- Floating toolbar markup (B5a-meta). Hidden by default; revealed when a
+         cell is selected. Built declaratively in HTML so the controls remain
+         keyboard-accessible even if hydration JS fails mid-script. -->
+    <div
+      class="grid-editor-toolbar"
+      role="toolbar"
+      aria-label="Cell controls"
+      data-toolbar
+      data-toolbar-hidden="true"
+      hidden
+    >
+      <!-- Kind switcher -->
+      <fieldset class="grid-editor-toolbar-group">
+        <legend>Kind</legend>
+        <label>
+          <input type="radio" name="cell-kind" value="text" data-kind-radio />
+          <span>Text</span>
+        </label>
+        <label>
+          <input type="radio" name="cell-kind" value="image" data-kind-radio />
+          <span>Image</span>
+        </label>
+        <label>
+          <input type="radio" name="cell-kind" value="empty" data-kind-radio />
+          <span>Empty</span>
+        </label>
+      </fieldset>
+
+      <!-- Fill picker -->
+      <fieldset class="grid-editor-toolbar-group">
+        <legend>Fill</legend>
+        <label>
+          <input type="radio" name="cell-fill" value="" data-fill-radio />
+          <span class="grid-editor-fill-swatch" data-fill-swatch="">None</span>
+        </label>
+        <label>
+          <input type="radio" name="cell-fill" value="paper" data-fill-radio />
+          <span class="grid-editor-fill-swatch" data-fill-swatch="paper">Paper</span>
+        </label>
+        <label>
+          <input type="radio" name="cell-fill" value="muted" data-fill-radio />
+          <span class="grid-editor-fill-swatch" data-fill-swatch="muted">Muted</span>
+        </label>
+        <label>
+          <input type="radio" name="cell-fill" value="accent" data-fill-radio />
+          <span class="grid-editor-fill-swatch" data-fill-swatch="accent">Accent</span>
+        </label>
+        <label>
+          <input type="radio" name="cell-fill" value="rule" data-fill-radio />
+          <span class="grid-editor-fill-swatch" data-fill-swatch="rule">Rule</span>
+        </label>
+      </fieldset>
+
+      <!-- Span steppers -->
+      <fieldset class="grid-editor-toolbar-group">
+        <legend>Span</legend>
+        <div class="grid-editor-stepper">
+          <span class="grid-editor-stepper-label">Cols</span>
+          <button type="button" data-colspan-dec aria-label="Decrease column span">−</button>
+          <output data-colspan-display>1</output>
+          <button type="button" data-colspan-inc aria-label="Increase column span">+</button>
+        </div>
+        <div class="grid-editor-stepper">
+          <span class="grid-editor-stepper-label">Rows</span>
+          <button type="button" data-rowspan-dec aria-label="Decrease row span">−</button>
+          <output data-rowspan-display>1</output>
+          <button type="button" data-rowspan-inc aria-label="Increase row span">+</button>
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- Right-click context menu (B4a). Hidden by default; positioned at the
+         right-click coordinates inside the editor canvas; closes on click
+         outside, Esc, or selecting an option. -->
+    <ul
+      class="grid-editor-context-menu"
+      role="menu"
+      data-context-menu
+      hidden
+    >
+      <li role="menuitem">
+        <button type="button" data-ctx-duplicate>
+          Duplicate cell
+          <kbd>⌘D</kbd>
+        </button>
+      </li>
+      <li role="menuitem">
+        <button type="button" data-ctx-move>
+          Move to next free
+        </button>
+      </li>
+      <li role="separator" aria-hidden="true"></li>
+      <li role="menuitem">
+        <button type="button" data-ctx-delete class="grid-editor-context-menu-danger">
+          Delete cell
+          <kbd>⌘⌫</kbd>
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Fallback for JS-disabled environments: a textarea showing the source
+       markdown. The skeleton commit doesn't make it editable; later commits
+       wire it as the "Show source" toggle. -->
+  <noscript>
+    <p class="grid-editor-noscript">
+      The grid editor requires JavaScript. The cell content is editable as
+      raw markdown directive below:
+    </p>
+    <textarea class="grid-editor-fallback" readonly>{initialMarkdown}</textarea>
+  </noscript>
+</div>
+
+<script>
+  import { parseDirective } from '../../lib/grid/parse-directive.js';
+  import { serializeDirective } from '../../lib/grid/serialize-directive.js';
+  import {
+    emptyGridDocument,
+    GRID_MATRIX,
+    nextCellId,
+  } from '../../lib/grid/grid-document.js';
+  import type {
+    GridDocument,
+    EditorCell,
+    GridFields,
+    CellKind,
+    CellFill,
+  } from '../../lib/grid/grid-document.js';
+
+  // ─── Per-editor state ─────────────────────────────────────────────────────
+
+  /**
+   * Holds all mutable state for one editor instance. Passed into every helper
+   * function instead of relying on closure capture — easier to reason about
+   * and easier to test if we ever extract these helpers.
+   */
+  interface EditorState {
+    container: HTMLElement;
+    grid: HTMLElement;
+    toolbar: HTMLElement;
+    topToolbar: HTMLElement;
+    contextMenu: HTMLElement;
+    status: HTMLElement | null;
+    canvas: HTMLElement;
+    /** MUTABLE — updated via commit(). */
+    doc: GridDocument;
+    /** ID of the currently-selected cell, or null if no selection. */
+    selectedId: number | null;
+    /** ID of the cell currently in edit mode, or null. */
+    editingId: number | null;
+    /** ID of the cell the context menu was opened on, or null. */
+    contextMenuCellId: number | null;
+    /** Debounce handle for the 'user' event dispatch. */
+    debounceHandle: number | null;
+  }
+
+  // ─── Hydrate every grid-editor instance on the page ────────────────────────
+  for (const container of document.querySelectorAll<HTMLElement>(
+    '[data-grid-editor]',
+  )) {
+    initEditor(container);
+  }
+
+  /**
+   * Bind one editor instance to its container DOM.
+   */
+  function initEditor(container: HTMLElement): void {
+    const initialMarkdownScript = container.querySelector<HTMLScriptElement>(
+      'script[data-initial-markdown]',
+    );
+    const initialMarkdown = initialMarkdownScript?.textContent ?? '';
+
+    const defaultFieldsRaw = parseInt(
+      container.dataset['defaultFields'] ?? '8',
+      10,
+    );
+    const defaultFields: GridFields =
+      defaultFieldsRaw === 8 || defaultFieldsRaw === 16 || defaultFieldsRaw === 32
+        ? defaultFieldsRaw
+        : 8;
+
+    const doc: GridDocument =
+      parseDirective(initialMarkdown) ?? emptyGridDocument(defaultFields);
+
+    const grid = container.querySelector<HTMLElement>('[data-grid]');
+    const toolbar = container.querySelector<HTMLElement>('[data-toolbar]');
+    const topToolbar = container.querySelector<HTMLElement>('[data-top-toolbar]');
+    const contextMenu = container.querySelector<HTMLElement>('[data-context-menu]');
+    const canvas = container.querySelector<HTMLElement>('[data-canvas]');
+    const status = container.querySelector<HTMLElement>('[data-status]');
+    if (!grid || !toolbar || !canvas || !topToolbar || !contextMenu) {
+      // eslint-disable-next-line no-console
+      console.error('[pilcrow grid-editor] container is missing required children');
+      return;
+    }
+
+    const state: EditorState = {
+      container,
+      grid,
+      toolbar,
+      topToolbar,
+      contextMenu,
+      status,
+      canvas,
+      doc,
+      selectedId: null,
+      editingId: null,
+      contextMenuCellId: null,
+      debounceHandle: null,
+    };
+
+    renderGrid(state);
+    syncTopToolbar(state);
+    wireGridInteractions(state);
+    wireToolbar(state);
+    wireTopToolbar(state);
+    wireContextMenu(state);
+    wireGlobalInteractions(state);
+    updateStatus(state, null);
+
+    // Initial event deferred via setTimeout(0) — see learnings.md 2026-05-06
+    // for the init-race rationale (Astro <script> modules vs host listeners).
+    setTimeout(() => {
+      dispatchChange(state, 'init');
+    }, 0);
+  }
+
+  // ─── State mutation ──────────────────────────────────────────────────────
+
+  /**
+   * Apply a mutator to the editor's doc. The mutator either modifies the cells
+   * array in place OR returns a partial update. Re-renders only the affected
+   * cell when possible; full grid re-render only for structural changes
+   * (cells added, removed, reordered, or grid.fields changed).
+   *
+   * After mutation: updates ARIA label on changed cell, repositions toolbar
+   * if the selected cell's geometry changed, dispatches debounced 'user'
+   * event with the new serialised markdown.
+   */
+  function commit(
+    state: EditorState,
+    mutator: (doc: GridDocument) => { rerenderCellId?: number; structuralChange?: boolean },
+  ): void {
+    const result = mutator(state.doc);
+
+    if (result.structuralChange) {
+      // Full grid re-render (e.g. fields changed, cells added/removed).
+      renderGrid(state);
+      syncTopToolbar(state);
+      // Re-apply selection if the selected cell still exists.
+      if (state.selectedId !== null) {
+        const cellEl = findCellElementById(state.grid, state.selectedId);
+        if (cellEl) {
+          selectCellInternal(state, cellEl, state.selectedId);
+        } else {
+          state.selectedId = null;
+          hideToolbar(state);
+        }
+      }
+    } else if (result.rerenderCellId !== undefined) {
+      // Single-cell re-render. Preserves focus + edit mode of OTHER cells.
+      rerenderCell(state, result.rerenderCellId);
+      // If the re-rendered cell is selected, reposition toolbar.
+      if (state.selectedId === result.rerenderCellId) {
+        const cellEl = findCellElementById(state.grid, result.rerenderCellId);
+        if (cellEl) positionToolbar(state, cellEl);
+      }
+    }
+
+    updateStatus(state, currentlySelectedCell(state));
+    debouncedDispatchUser(state);
+  }
+
+  /**
+   * Find a cell in the doc by id. Returns null if not found.
+   */
+  function findCellById(doc: GridDocument, id: number): EditorCell | null {
+    return doc.cells.find((c) => c.id === id) ?? null;
+  }
+
+  /**
+   * Find the DOM element for a cell by id.
+   */
+  function findCellElementById(grid: HTMLElement, id: number): HTMLElement | null {
+    return grid.querySelector<HTMLElement>(`[data-cell-id="${id}"]`);
+  }
+
+  /**
+   * Currently-selected cell in the doc, or null.
+   */
+  function currentlySelectedCell(state: EditorState): EditorCell | null {
+    if (state.selectedId === null) return null;
+    return findCellById(state.doc, state.selectedId);
+  }
+
+  // ─── Render ──────────────────────────────────────────────────────────────
+
+  /**
+   * Full grid re-render. Used on init + on structural mutations.
+   */
+  function renderGrid(state: EditorState): void {
+    const { cols, rows } = GRID_MATRIX[state.doc.fields];
+    state.grid.style.setProperty('--grid-cols', String(cols));
+    state.grid.style.setProperty('--grid-rows', String(rows));
+    state.grid.dataset['gridFields'] = String(state.doc.fields);
+    state.grid.setAttribute('aria-rowcount', String(rows));
+    state.grid.setAttribute('aria-colcount', String(cols));
+
+    state.grid.replaceChildren();
+
+    for (let i = 0; i < state.doc.cells.length; i++) {
+      const cell = state.doc.cells[i]!;
+      state.grid.appendChild(renderCell(cell, i));
+    }
+  }
+
+  /**
+   * Re-render a single cell in place. Preserves focus + edit mode of other
+   * cells. If the re-rendered cell was the editing cell, edit mode is exited
+   * (text already committed via the input handler).
+   */
+  function rerenderCell(state: EditorState, cellId: number): void {
+    const oldEl = findCellElementById(state.grid, cellId);
+    const cell = findCellById(state.doc, cellId);
+    if (!oldEl || !cell) return;
+
+    const allCells = Array.from(
+      state.grid.querySelectorAll<HTMLElement>('.grid-editor-cell'),
+    );
+    const index = allCells.indexOf(oldEl);
+    const newEl = renderCell(cell, index);
+
+    // Preserve selection visual.
+    if (state.selectedId === cellId) {
+      newEl.dataset['selected'] = 'true';
+      newEl.tabIndex = 0;
+    } else {
+      newEl.tabIndex = oldEl.tabIndex;
+    }
+
+    oldEl.replaceWith(newEl);
+
+    // If this cell was being edited and is still text-kind, restore edit mode
+    // (user may have changed fill mid-typing; their text + cursor should stay).
+    if (state.editingId === cellId && cell.kind === 'text') {
+      enterEditMode(state, cellId, /* skipFocus= */ false);
+    } else if (state.editingId === cellId) {
+      // Kind changed to image/empty during edit — exit edit mode silently.
+      state.editingId = null;
+    }
+  }
+
+  /**
+   * Render one cell element. Pure — does not depend on editor state beyond
+   * the cell and its index.
+   */
+  function renderCell(cell: EditorCell, index: number): HTMLElement {
+    const div = document.createElement('div');
+    div.className = 'grid-editor-cell';
+    div.setAttribute('role', 'gridcell');
+    div.setAttribute('tabindex', index === 0 ? '0' : '-1');
+    div.dataset['cellId'] = String(cell.id);
+    div.dataset['cellKind'] = cell.kind;
+    if (cell.fill) {
+      div.dataset['cellFill'] = cell.fill;
+    } else {
+      delete div.dataset['cellFill'];
+    }
+
+    if (cell.colstart !== undefined) {
+      div.style.gridColumn = `${cell.colstart} / span ${cell.colspan}`;
+    } else if (cell.colspan > 1) {
+      div.style.gridColumn = `span ${cell.colspan}`;
+    }
+    if (cell.rowstart !== undefined) {
+      div.style.gridRow = `${cell.rowstart} / span ${cell.rowspan}`;
+    } else if (cell.rowspan > 1) {
+      div.style.gridRow = `span ${cell.rowspan}`;
+    }
+
+    if (cell.kind === 'text') {
+      const content = document.createElement('div');
+      content.className = 'grid-editor-cell-content';
+      content.dataset['cellContent'] = '';
+      content.textContent = cell.text;
+      div.appendChild(content);
+    } else if (cell.kind === 'image') {
+      div.appendChild(buildImagePlaceholder(cell.alt ?? ''));
+    }
+    // kind === 'empty': no body content.
+
+    div.setAttribute('aria-label', ariaLabelForCell(cell));
+    return div;
+  }
+
+  function buildImagePlaceholder(alt: string): SVGSVGElement {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'grid-editor-cell-image-placeholder');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', alt);
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('x', '0');
+    rect.setAttribute('y', '0');
+    rect.setAttribute('width', '100');
+    rect.setAttribute('height', '100');
+    rect.setAttribute('fill', 'var(--rule)');
+    svg.appendChild(rect);
+    for (const [x1, y1, x2, y2] of [
+      ['0', '0', '100', '100'],
+      ['100', '0', '0', '100'],
+    ] as const) {
+      const line = document.createElementNS(ns, 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('stroke', 'var(--muted)');
+      line.setAttribute('stroke-width', '0.5');
+      svg.appendChild(line);
+    }
+    return svg;
+  }
+
+  function ariaLabelForCell(cell: EditorCell): string {
+    const parts: string[] = [`Cell ${cell.id}`];
+    parts.push(cell.kind);
+    if (cell.fill) parts.push(`${cell.fill} fill`);
+    if (cell.colspan > 1 || cell.rowspan > 1) {
+      parts.push(`${cell.colspan} columns by ${cell.rowspan} rows`);
+    }
+    if (cell.kind === 'text' && cell.text) {
+      const snippet = cell.text.slice(0, 60).replace(/\s+/g, ' ');
+      parts.push(`content: ${snippet}${cell.text.length > 60 ? '…' : ''}`);
+    } else if (cell.kind === 'image' && cell.alt) {
+      parts.push(`image: ${cell.alt}`);
+    }
+    return parts.join(', ');
+  }
+
+  // ─── Grid interactions ──────────────────────────────────────────────────
+
+  function wireGridInteractions(state: EditorState): void {
+    // Click → select cell. If already selected and double-click, enter edit mode.
+    state.grid.addEventListener('click', (e) => {
+      const cellEl = (e.target as HTMLElement).closest<HTMLElement>(
+        '.grid-editor-cell',
+      );
+      if (!cellEl) return;
+      const cellId = parseInt(cellEl.dataset['cellId'] ?? '', 10);
+      if (!Number.isFinite(cellId)) return;
+      selectCellById(state, cellId);
+      cellEl.focus();
+    });
+
+    // Double-click on text cell → enter edit mode.
+    state.grid.addEventListener('dblclick', (e) => {
+      const cellEl = (e.target as HTMLElement).closest<HTMLElement>(
+        '.grid-editor-cell',
+      );
+      if (!cellEl) return;
+      const cellId = parseInt(cellEl.dataset['cellId'] ?? '', 10);
+      const cell = findCellById(state.doc, cellId);
+      if (!cell || cell.kind !== 'text') return;
+      enterEditMode(state, cellId);
+    });
+
+    // Right-click on cell → open context menu (B4a).
+    state.grid.addEventListener('contextmenu', (e) => {
+      const cellEl = (e.target as HTMLElement).closest<HTMLElement>(
+        '.grid-editor-cell',
+      );
+      if (!cellEl) return;
+      const cellId = parseInt(cellEl.dataset['cellId'] ?? '', 10);
+      if (!Number.isFinite(cellId)) return;
+      e.preventDefault();
+      // Select first so the context menu acts on the right cell.
+      selectCellById(state, cellId);
+      cellEl.focus();
+      openContextMenu(state, cellId, e.clientX, e.clientY);
+    });
+
+    // Keyboard nav + edit-mode triggers.
+    state.grid.addEventListener('keydown', (e) => {
+      // If in edit mode, only Esc + Tab are intercepted here; everything else
+      // lets contenteditable handle.
+      if (state.editingId !== null) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          exitEditMode(state);
+          const cellEl = findCellElementById(state.grid, state.editingId ?? -1);
+          cellEl?.focus();
+        } else if (e.key === 'Tab') {
+          // Let Tab move focus naturally; commit + exit.
+          exitEditMode(state);
+        }
+        return;
+      }
+
+      // Cmd/Ctrl shortcuts for delete + duplicate (B4a).
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && (e.key === 'Backspace' || e.key === 'Delete')) {
+        if (state.selectedId !== null) {
+          e.preventDefault();
+          deleteCell(state, state.selectedId);
+        }
+        return;
+      }
+      if (mod && (e.key === 'd' || e.key === 'D')) {
+        if (state.selectedId !== null) {
+          e.preventDefault();
+          duplicateCell(state, state.selectedId);
+        }
+        return;
+      }
+
+      const cells = Array.from(
+        state.grid.querySelectorAll<HTMLElement>('.grid-editor-cell'),
+      );
+      if (cells.length === 0) return;
+
+      const currentEl = document.activeElement as HTMLElement | null;
+      const currentIdx = currentEl ? cells.indexOf(currentEl) : -1;
+      let nextIdx: number = currentIdx;
+
+      switch (e.key) {
+        case 'ArrowRight':
+          nextIdx = clamp(currentIdx + 1, 0, cells.length - 1);
+          break;
+        case 'ArrowLeft':
+          nextIdx = clamp(currentIdx - 1, 0, cells.length - 1);
+          break;
+        case 'ArrowDown':
+          nextIdx = nextCellByGeometry(cells, currentIdx, 'down');
+          break;
+        case 'ArrowUp':
+          nextIdx = nextCellByGeometry(cells, currentIdx, 'up');
+          break;
+        case 'Home':
+          nextIdx = 0;
+          break;
+        case 'End':
+          nextIdx = cells.length - 1;
+          break;
+        case 'Escape':
+          if (currentEl) currentEl.blur();
+          deselect(state);
+          e.preventDefault();
+          return;
+        case 'Enter': {
+          if (currentEl) {
+            const cellId = parseInt(currentEl.dataset['cellId'] ?? '', 10);
+            const cell = findCellById(state.doc, cellId);
+            if (cell?.kind === 'text') {
+              e.preventDefault();
+              enterEditMode(state, cellId);
+            }
+          }
+          return;
+        }
+        default:
+          return;
+      }
+
+      if (nextIdx !== currentIdx && nextIdx >= 0) {
+        e.preventDefault();
+        const nextCell = cells[nextIdx]!;
+        const nextId = parseInt(nextCell.dataset['cellId'] ?? '', 10);
+        selectCellById(state, nextId);
+        nextCell.focus();
+      }
+    });
+  }
+
+  /**
+   * Find the cell directly above or below the current one using actual grid
+   * geometry. Falls back to DOM-index ± 1 when no clear candidate exists.
+   *
+   * Approach: take the current cell's centre-x. Find the cell whose horizontal
+   * range contains that x AND whose vertical position is closest in the
+   * requested direction. Handles spans correctly (a wide cell above a narrow
+   * one still matches as long as the narrow cell's x falls within the wide
+   * cell's range).
+   */
+  function nextCellByGeometry(
+    cells: HTMLElement[],
+    currentIdx: number,
+    direction: 'up' | 'down',
+  ): number {
+    if (currentIdx < 0) return clamp(direction === 'down' ? 0 : cells.length - 1, 0, cells.length - 1);
+    const current = cells[currentIdx]!;
+    const cur = current.getBoundingClientRect();
+    const curCenterX = cur.left + cur.width / 2;
+
+    let bestIdx = currentIdx;
+    let bestDistance = Infinity;
+    for (let i = 0; i < cells.length; i++) {
+      if (i === currentIdx) continue;
+      const r = cells[i]!.getBoundingClientRect();
+      const verticallyOK = direction === 'down' ? r.top > cur.top : r.bottom < cur.bottom;
+      if (!verticallyOK) continue;
+      const horizontallyOverlaps = curCenterX >= r.left && curCenterX <= r.right;
+      if (!horizontallyOverlaps) continue;
+      // Distance: vertical gap is primary; ties broken by horizontal centre delta.
+      const verticalGap = direction === 'down' ? r.top - cur.bottom : cur.top - r.bottom;
+      if (verticalGap < bestDistance) {
+        bestDistance = verticalGap;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }
+
+  /**
+   * Global click handler: clicking outside any cell deselects.
+   * Click handler is attached to document but checks if the click landed
+   * inside the editor container (no-op) or outside (deselect).
+   */
+  function wireGlobalInteractions(state: EditorState): void {
+    document.addEventListener('mousedown', (e) => {
+      const target = e.target as HTMLElement;
+      // Close context menu if click is outside it.
+      if (!state.contextMenu.hasAttribute('hidden')) {
+        const insideMenu = target.closest('[data-context-menu]') === state.contextMenu;
+        if (!insideMenu) closeContextMenu(state);
+      }
+      const insideEditor = target.closest('.grid-editor');
+      if (insideEditor === state.container) return;
+      // Click landed outside this editor.
+      if (state.editingId !== null) exitEditMode(state);
+      if (state.selectedId !== null) deselect(state);
+    });
+  }
+
+  // ─── Selection ──────────────────────────────────────────────────────────
+
+  function selectCellById(state: EditorState, cellId: number): void {
+    if (state.selectedId === cellId) return; // already selected
+    // Exit any active edit mode in a different cell.
+    if (state.editingId !== null && state.editingId !== cellId) {
+      exitEditMode(state);
+    }
+    const cellEl = findCellElementById(state.grid, cellId);
+    if (!cellEl) return;
+    selectCellInternal(state, cellEl, cellId);
+  }
+
+  function selectCellInternal(
+    state: EditorState,
+    cellEl: HTMLElement,
+    cellId: number,
+  ): void {
+    for (const c of state.grid.querySelectorAll<HTMLElement>('.grid-editor-cell')) {
+      const isSelected = c === cellEl;
+      c.tabIndex = isSelected ? 0 : -1;
+      c.dataset['selected'] = isSelected ? 'true' : 'false';
+    }
+    state.selectedId = cellId;
+    showToolbar(state, cellEl);
+    updateStatus(state, findCellById(state.doc, cellId));
+  }
+
+  function deselect(state: EditorState): void {
+    if (state.editingId !== null) exitEditMode(state);
+    const cells = state.grid.querySelectorAll<HTMLElement>('.grid-editor-cell');
+    cells.forEach((c, i) => {
+      c.tabIndex = i === 0 ? 0 : -1;
+      delete c.dataset['selected'];
+    });
+    state.selectedId = null;
+    hideToolbar(state);
+    updateStatus(state, null);
+  }
+
+  // ─── Edit mode (B2a — inline contenteditable) ────────────────────────────
+
+  function enterEditMode(
+    state: EditorState,
+    cellId: number,
+    skipFocus = false,
+  ): void {
+    const cell = findCellById(state.doc, cellId);
+    const cellEl = findCellElementById(state.grid, cellId);
+    if (!cell || !cellEl || cell.kind !== 'text') return;
+
+    const content = cellEl.querySelector<HTMLElement>('[data-cell-content]');
+    if (!content) return;
+
+    // plaintext-only sidesteps rich-paste, Cmd-B/I, and nested-tag risks.
+    // Supported in Chromium/Safari/Firefox (since 2023). Fallback for older
+    // browsers: contenteditable="true" + manual key-handling (not shipped).
+    content.setAttribute('contenteditable', 'plaintext-only');
+    cellEl.dataset['editing'] = 'true';
+    state.editingId = cellId;
+
+    if (!skipFocus) {
+      content.focus();
+      // Move caret to end of existing text for a natural typing experience.
+      const range = document.createRange();
+      range.selectNodeContents(content);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+
+    // Wire the input handler (idempotent — addEventListener with same fn
+    // doesn't double-bind).
+    content.addEventListener('input', () => onCellInput(state, cellId, content));
+    content.addEventListener('blur', () => {
+      // Defer the exit so a click on the toolbar (which causes blur first)
+      // doesn't drop the edit before the toolbar handler runs.
+      setTimeout(() => {
+        if (state.editingId === cellId && document.activeElement !== content) {
+          exitEditMode(state);
+        }
+      }, 0);
+    });
+  }
+
+  function onCellInput(
+    state: EditorState,
+    cellId: number,
+    content: HTMLElement,
+  ): void {
+    const newText = content.textContent ?? '';
+    const cell = findCellById(state.doc, cellId);
+    if (!cell) return;
+    if (cell.text === newText) return;
+
+    // Mutate doc in place — single-cell text change doesn't need full re-render.
+    cell.text = newText;
+    // Update ARIA label so screen readers reflect the new content.
+    const cellEl = findCellElementById(state.grid, cellId);
+    if (cellEl) cellEl.setAttribute('aria-label', ariaLabelForCell(cell));
+    updateStatus(state, cell);
+    debouncedDispatchUser(state);
+  }
+
+  function exitEditMode(state: EditorState): void {
+    if (state.editingId === null) return;
+    const cellEl = findCellElementById(state.grid, state.editingId);
+    if (cellEl) {
+      const content = cellEl.querySelector<HTMLElement>('[data-cell-content]');
+      content?.removeAttribute('contenteditable');
+      delete cellEl.dataset['editing'];
+    }
+    state.editingId = null;
+  }
+
+  // ─── Floating toolbar (B5a-meta) ────────────────────────────────────────
+
+  function wireToolbar(state: EditorState): void {
+    // Kind switcher
+    const kindRadios = state.toolbar.querySelectorAll<HTMLInputElement>(
+      '[data-kind-radio]',
+    );
+    kindRadios.forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (state.selectedId === null) return;
+        const kind = radio.value as CellKind;
+        commit(state, (doc) => {
+          const cell = doc.cells.find((c) => c.id === state.selectedId);
+          if (cell) {
+            cell.kind = kind;
+            // Clear text when switching away from text.
+            if (kind !== 'text') cell.text = '';
+          }
+          return { rerenderCellId: state.selectedId ?? undefined };
+        });
+      });
+    });
+
+    // Fill picker
+    const fillRadios = state.toolbar.querySelectorAll<HTMLInputElement>(
+      '[data-fill-radio]',
+    );
+    fillRadios.forEach((radio) => {
+      radio.addEventListener('change', () => {
+        if (state.selectedId === null) return;
+        const fillValue = radio.value;
+        const fill: CellFill =
+          fillValue === '' ? undefined :
+          (fillValue === 'paper' || fillValue === 'muted' ||
+           fillValue === 'accent' || fillValue === 'rule')
+            ? fillValue
+            : undefined;
+        commit(state, (doc) => {
+          const cell = doc.cells.find((c) => c.id === state.selectedId);
+          if (cell) {
+            if (fill) cell.fill = fill;
+            else delete cell.fill;
+          }
+          return { rerenderCellId: state.selectedId ?? undefined };
+        });
+      });
+    });
+
+    // Span steppers
+    const colInc = state.toolbar.querySelector<HTMLButtonElement>('[data-colspan-inc]');
+    const colDec = state.toolbar.querySelector<HTMLButtonElement>('[data-colspan-dec]');
+    const rowInc = state.toolbar.querySelector<HTMLButtonElement>('[data-rowspan-inc]');
+    const rowDec = state.toolbar.querySelector<HTMLButtonElement>('[data-rowspan-dec]');
+
+    colInc?.addEventListener('click', () => stepSpan(state, 'colspan', +1));
+    colDec?.addEventListener('click', () => stepSpan(state, 'colspan', -1));
+    rowInc?.addEventListener('click', () => stepSpan(state, 'rowspan', +1));
+    rowDec?.addEventListener('click', () => stepSpan(state, 'rowspan', -1));
+  }
+
+  function stepSpan(
+    state: EditorState,
+    axis: 'colspan' | 'rowspan',
+    delta: number,
+  ): void {
+    if (state.selectedId === null) return;
+    const { cols, rows } = GRID_MATRIX[state.doc.fields];
+    const max = axis === 'colspan' ? cols : rows;
+    commit(state, (doc) => {
+      const cell = doc.cells.find((c) => c.id === state.selectedId);
+      if (cell) {
+        cell[axis] = clamp(cell[axis] + delta, 1, max);
+      }
+      return { rerenderCellId: state.selectedId ?? undefined };
+    });
+  }
+
+  function showToolbar(state: EditorState, cellEl: HTMLElement): void {
+    const cell = findCellById(state.doc, state.selectedId ?? -1);
+    if (!cell) return;
+    syncToolbarValues(state, cell);
+    state.toolbar.removeAttribute('hidden');
+    state.toolbar.dataset['toolbarHidden'] = 'false';
+    positionToolbar(state, cellEl);
+  }
+
+  function hideToolbar(state: EditorState): void {
+    state.toolbar.setAttribute('hidden', '');
+    state.toolbar.dataset['toolbarHidden'] = 'true';
+  }
+
+  /**
+   * Sync the toolbar control values to the currently-selected cell.
+   * Called on selection change and on per-cell re-render.
+   */
+  function syncToolbarValues(state: EditorState, cell: EditorCell): void {
+    // Kind radios
+    state.toolbar.querySelectorAll<HTMLInputElement>('[data-kind-radio]')
+      .forEach((r) => { r.checked = r.value === cell.kind; });
+    // Fill radios
+    state.toolbar.querySelectorAll<HTMLInputElement>('[data-fill-radio]')
+      .forEach((r) => { r.checked = r.value === (cell.fill ?? ''); });
+    // Span displays
+    const colDisp = state.toolbar.querySelector<HTMLOutputElement>('[data-colspan-display]');
+    const rowDisp = state.toolbar.querySelector<HTMLOutputElement>('[data-rowspan-display]');
+    if (colDisp) colDisp.value = String(cell.colspan);
+    if (rowDisp) rowDisp.value = String(cell.rowspan);
+  }
+
+  /**
+   * Position the floating toolbar relative to the selected cell. 8px above
+   * the cell if there's room within the canvas; otherwise 8px below. Aligned
+   * to the cell's left edge, clamped within canvas bounds.
+   */
+  function positionToolbar(state: EditorState, cellEl: HTMLElement): void {
+    // Force layout so getBoundingClientRect reflects current geometry.
+    state.toolbar.style.visibility = 'hidden';
+    state.toolbar.style.left = '0';
+    state.toolbar.style.top = '0';
+    void state.toolbar.offsetHeight;
+
+    const cellRect = cellEl.getBoundingClientRect();
+    const canvasRect = state.canvas.getBoundingClientRect();
+    const toolbarRect = state.toolbar.getBoundingClientRect();
+    const margin = 8;
+
+    // Vertical: above if room, else below.
+    const roomAbove = cellRect.top - canvasRect.top;
+    const placeAbove = roomAbove >= toolbarRect.height + margin * 2;
+    let top: number;
+    if (placeAbove) {
+      top = cellRect.top - canvasRect.top - toolbarRect.height - margin;
+    } else {
+      top = cellRect.bottom - canvasRect.top + margin;
+    }
+
+    // Horizontal: align with cell left; clamp to canvas bounds.
+    let left = cellRect.left - canvasRect.left;
+    const maxLeft = canvasRect.width - toolbarRect.width;
+    left = clamp(left, 0, Math.max(0, maxLeft));
+
+    state.toolbar.style.left = `${left}px`;
+    state.toolbar.style.top = `${top}px`;
+    state.toolbar.style.visibility = 'visible';
+  }
+
+  // ─── Top toolbar (B4a: Add cell + field-count switcher) ─────────────────
+
+  function wireTopToolbar(state: EditorState): void {
+    // Field-count switcher.
+    state.topToolbar.querySelectorAll<HTMLInputElement>('[data-fields-radio]').forEach((radio) => {
+      radio.addEventListener('change', () => {
+        const value = parseInt(radio.value, 10);
+        if (value !== 8 && value !== 16 && value !== 32) return;
+        const newFields: GridFields = value;
+        if (newFields === state.doc.fields) return;
+        commit(state, (doc) => {
+          doc.fields = newFields;
+          // Clamp existing cell spans to new matrix bounds.
+          const { cols, rows } = GRID_MATRIX[newFields];
+          for (const cell of doc.cells) {
+            if (cell.colspan > cols) cell.colspan = cols;
+            if (cell.rowspan > rows) cell.rowspan = rows;
+            if (cell.colstart !== undefined && cell.colstart > cols) delete cell.colstart;
+            if (cell.rowstart !== undefined && cell.rowstart > rows) delete cell.rowstart;
+          }
+          return { structuralChange: true };
+        });
+      });
+    });
+
+    // Add cell button.
+    const addBtn = state.topToolbar.querySelector<HTMLButtonElement>('[data-add-cell]');
+    addBtn?.addEventListener('click', () => addCell(state));
+  }
+
+  /**
+   * Reflect doc state into top toolbar controls (field count radio, cell count).
+   * Called on init + after structural mutations.
+   */
+  function syncTopToolbar(state: EditorState): void {
+    state.topToolbar.querySelectorAll<HTMLInputElement>('[data-fields-radio]').forEach((r) => {
+      r.checked = parseInt(r.value, 10) === state.doc.fields;
+    });
+    const count = state.topToolbar.querySelector<HTMLElement>('[data-cell-count]');
+    if (count) {
+      const n = state.doc.cells.length;
+      count.textContent = `${n} cell${n === 1 ? '' : 's'}`;
+    }
+  }
+
+  // ─── Context menu (B4a: right-click on cell) ─────────────────────────────
+
+  function wireContextMenu(state: EditorState): void {
+    const menu = state.contextMenu;
+
+    const dup = menu.querySelector<HTMLButtonElement>('[data-ctx-duplicate]');
+    const del = menu.querySelector<HTMLButtonElement>('[data-ctx-delete]');
+    const move = menu.querySelector<HTMLButtonElement>('[data-ctx-move]');
+
+    dup?.addEventListener('click', () => {
+      if (state.contextMenuCellId !== null) duplicateCell(state, state.contextMenuCellId);
+      closeContextMenu(state);
+    });
+    del?.addEventListener('click', () => {
+      if (state.contextMenuCellId !== null) deleteCell(state, state.contextMenuCellId);
+      closeContextMenu(state);
+    });
+    move?.addEventListener('click', () => {
+      if (state.contextMenuCellId !== null) moveCellToNextFree(state, state.contextMenuCellId);
+      closeContextMenu(state);
+    });
+
+    // Close on Esc when menu is open.
+    document.addEventListener('keydown', (e) => {
+      if (menu.hasAttribute('hidden')) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeContextMenu(state);
+      }
+    });
+  }
+
+  function openContextMenu(
+    state: EditorState,
+    cellId: number,
+    clientX: number,
+    clientY: number,
+  ): void {
+    state.contextMenuCellId = cellId;
+    const menu = state.contextMenu;
+    const canvasRect = state.canvas.getBoundingClientRect();
+    menu.removeAttribute('hidden');
+    // Force layout, then measure.
+    menu.style.visibility = 'hidden';
+    menu.style.left = '0';
+    menu.style.top = '0';
+    void menu.offsetHeight;
+    const menuRect = menu.getBoundingClientRect();
+    let left = clientX - canvasRect.left;
+    let top = clientY - canvasRect.top;
+    // Clamp to canvas bounds so menu can't overflow.
+    left = clamp(left, 0, Math.max(0, canvasRect.width - menuRect.width));
+    top = clamp(top, 0, Math.max(0, canvasRect.height - menuRect.height));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.visibility = 'visible';
+  }
+
+  function closeContextMenu(state: EditorState): void {
+    state.contextMenu.setAttribute('hidden', '');
+    state.contextMenuCellId = null;
+  }
+
+  // ─── Cell add / delete / duplicate / move ────────────────────────────────
+
+  function addCell(state: EditorState): void {
+    const id = nextCellId(state.doc);
+    const newCell: EditorCell = {
+      id,
+      colspan: 1,
+      rowspan: 1,
+      kind: 'text',
+      text: '',
+    };
+    commit(state, (doc) => {
+      doc.cells.push(newCell);
+      return { structuralChange: true };
+    });
+    // Select the new cell so the user can immediately edit.
+    state.selectedId = id;
+    const cellEl = findCellElementById(state.grid, id);
+    if (cellEl) {
+      selectCellInternal(state, cellEl, id);
+      cellEl.focus();
+    }
+  }
+
+  function deleteCell(state: EditorState, cellId: number): void {
+    const idx = state.doc.cells.findIndex((c) => c.id === cellId);
+    if (idx < 0) return;
+    commit(state, (doc) => {
+      doc.cells.splice(idx, 1);
+      return { structuralChange: true };
+    });
+    // If we just deleted the selected cell, clear selection.
+    if (state.selectedId === cellId) {
+      state.selectedId = null;
+      hideToolbar(state);
+    }
+  }
+
+  function duplicateCell(state: EditorState, cellId: number): void {
+    const cell = findCellById(state.doc, cellId);
+    if (!cell) return;
+    const newId = nextCellId(state.doc);
+    const dup: EditorCell = {
+      ...cell,
+      id: newId,
+      // Strip explicit positioning so the duplicate flows into the next free slot.
+      colstart: undefined,
+      rowstart: undefined,
+    };
+    // Remove undefined keys that the spread above carried over.
+    if (dup.colstart === undefined) delete dup.colstart;
+    if (dup.rowstart === undefined) delete dup.rowstart;
+    commit(state, (doc) => {
+      const idx = doc.cells.findIndex((c) => c.id === cellId);
+      doc.cells.splice(idx + 1, 0, dup);
+      return { structuralChange: true };
+    });
+    // Select the new duplicate.
+    state.selectedId = newId;
+    const cellEl = findCellElementById(state.grid, newId);
+    if (cellEl) {
+      selectCellInternal(state, cellEl, newId);
+      cellEl.focus();
+    }
+  }
+
+  function moveCellToNextFree(state: EditorState, cellId: number): void {
+    // Move = strip explicit positioning so CSS auto-flow places the cell at
+    // the next free slot in DOM order. If the cell has no explicit position,
+    // this is a no-op (cell was already in flow).
+    commit(state, (doc) => {
+      const cell = doc.cells.find((c) => c.id === cellId);
+      if (!cell) return {};
+      const hadExplicit = cell.colstart !== undefined || cell.rowstart !== undefined;
+      if (!hadExplicit) return {};
+      delete cell.colstart;
+      delete cell.rowstart;
+      return { rerenderCellId: cellId };
+    });
+  }
+
+  // ─── Status + event dispatch ─────────────────────────────────────────────
+
+  function updateStatus(state: EditorState, selected: EditorCell | null): void {
+    if (!state.status) return;
+    const { cols, rows } = GRID_MATRIX[state.doc.fields];
+    let msg = `${state.doc.fields}-field grid (${cols}×${rows}), ${state.doc.cells.length} cells`;
+    if (selected) {
+      msg += `. Selected: cell ${selected.id} (${selected.kind})`;
+    }
+    state.status.textContent = msg;
+  }
+
+  function dispatchChange(
+    state: EditorState,
+    source: 'init' | 'user' | 'restore',
+  ): void {
+    const markdown = serializeDirective(state.doc);
+    state.container.dispatchEvent(
+      new CustomEvent('pilcrow:grid-editor-changed', {
+        detail: { markdown, source },
+        bubbles: true,
+      }),
+    );
+  }
+
+  /**
+   * Debounced user-event dispatch. 250ms — matches typical typing rhythm,
+   * keeps hosts from being spammed but feels instant to the user.
+   */
+  function debouncedDispatchUser(state: EditorState): void {
+    if (state.debounceHandle !== null) {
+      window.clearTimeout(state.debounceHandle);
+    }
+    state.debounceHandle = window.setTimeout(() => {
+      state.debounceHandle = null;
+      dispatchChange(state, 'user');
+    }, 250);
+  }
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  function clamp(n: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, n));
+  }
+</script>

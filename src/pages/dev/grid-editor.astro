@@ -1,0 +1,245 @@
+---
+/**
+ * /dev/grid-editor — standalone test fixture for the GridEditor component.
+ *
+ * Part of Spec 02-B's Exit Criteria:
+ *   "Editor renders correctly in /dev/grid-editor fixture for empty / 8-field
+ *    / 16-field / 32-field initial states."
+ *
+ * This page mounts four editor instances at once so the rendering, ARIA
+ * semantics, keyboard nav, and selection behaviour can be validated in
+ * isolation — before host integration (Deliverables C, D, E) introduces
+ * additional surface area.
+ *
+ * Not linked from the main nav. Discoverable only by typing /dev/grid-editor
+ * into the address bar. The route is intentionally a hidden developer
+ * surface, not a marketing one.
+ *
+ * Each fixture exercises a different shape:
+ *   1. Empty 8-field grid (no cells; opens fresh)
+ *   2. 8-field with 4 text cells + 1 image cell + 1 empty fill cell
+ *   3. 16-field with mixed text/image/colour cells (the Mila spread)
+ *   4. 32-field densely populated (10 cells with mixed kinds + fills)
+ *
+ * After the skeleton commit: click any cell to select it, arrow keys to
+ * navigate, Esc to deselect. Inline editing, drag-resize, floating toolbar,
+ * add/remove controls are NOT in this skeleton — defer to subsequent commits.
+ */
+import Base from '../../layouts/Base.astro';
+import GridEditor from '../../components/grid/GridEditor.astro';
+
+// Sample directive markdown for each fixture. Mirrors src/content/posts/grid-demo.md
+// patterns so we exercise the same surface the published post does.
+
+const sample8 = `::::grid{fields=8}
+
+:::cell{id=1 colspan=2 fill=accent}
+The Art of Living with Less
+:::
+
+:::cell{id=2 colspan=1 rowspan=1 kind=image alt="modern dining room with thin black chairs"}
+:::
+
+:::cell{id=3 colspan=1 fill=muted}
+A well-designed interior does not need to feel crowded.
+:::
+
+:::cell{id=4 colspan=2}
+Mila Modern Furniture is rooted in the idea that the most memorable spaces are built on clarity, balance, and restraint.
+:::
+
+:::cell{id=5 colspan=2 kind=empty fill=rule}
+:::
+
+::::`;
+
+const sample16 = `::::grid{fields=16}
+
+:::cell{id=1 colspan=4}
+# Mila — Modern Furniture
+
+In a world filled with noise, the spaces we live in have become more important than ever.
+:::
+
+:::cell{id=2 colspan=2 kind=image alt="warm wooden bench in soft afternoon light"}
+:::
+
+:::cell{id=3 colspan=2 fill=accent}
+Each piece is designed to bring calm.
+:::
+
+:::cell{id=4 colspan=2 fill=muted}
+A chair becomes more than a seat.
+:::
+
+:::cell{id=5 colspan=2 kind=image alt="dining table with ceramic plates"}
+:::
+
+:::cell{id=6 colspan=4}
+Together, these pieces create a rhythm that feels intentional, warm, and quietly confident.
+:::
+
+::::`;
+
+const sample32 = `::::grid{fields=32}
+
+:::cell{id=1 colspan=4}
+# Late Nights
+:::
+
+:::cell{id=2 colspan=2 kind=image alt="lamp casting amber light on a wooden side table"}
+:::
+
+:::cell{id=3 colspan=2}
+A modern oasis for slow evenings.
+:::
+
+:::cell{id=4 colspan=1 fill=accent}
+28
+:::
+
+:::cell{id=5 colspan=3}
+The classic chair, the epitome of style and comfort.
+:::
+
+:::cell{id=6 colspan=2 fill=muted}
+Choose from a variety of colors and fabrics.
+:::
+
+:::cell{id=7 colspan=2 kind=image alt="leather armchair with tapered wooden legs"}
+:::
+
+:::cell{id=8 colspan=4 fill=rule}
+A rhythm that feels intentional.
+:::
+
+:::cell{id=9 colspan=2}
+Hoge Bank.
+:::
+
+:::cell{id=10 colspan=2 fill=accent}
+7. Gouden Gloed.
+:::
+
+::::`;
+---
+
+<Base title="Grid Editor — Dev Fixture" chrome="minimal">
+  <main class="dev-fixture">
+    <header class="dev-fixture-header">
+      <h1>Grid Editor — Dev Fixture</h1>
+      <p>
+        Spec 02-B skeleton commit. Each panel below mounts an independent
+        <code>&lt;GridEditor /&gt;</code> instance. Click a cell to select it;
+        arrow keys to navigate; <kbd>Esc</kbd> to deselect.
+      </p>
+      <p class="dev-fixture-disclaimer">
+        Inline editing, drag-resize, floating toolbar, and add/remove controls
+        are deferred to subsequent commits. This skeleton validates the
+        render + select + keyboard-nav contract only.
+      </p>
+    </header>
+
+    <section class="dev-fixture-section">
+      <h2>1. Empty 8-field grid</h2>
+      <p>Fresh editor, no cells. Renders the grid frame with no children.</p>
+      <GridEditor id="dev-editor-empty" defaultFields={8} initialMarkdown="" />
+    </section>
+
+    <section class="dev-fixture-section">
+      <h2>2. 8-field with mixed cells</h2>
+      <p>Five cells: text + image + colour fills + empty.</p>
+      <GridEditor id="dev-editor-8" defaultFields={8} initialMarkdown={sample8} />
+    </section>
+
+    <section class="dev-fixture-section">
+      <h2>3. 16-field flexible spread</h2>
+      <p>Mila brand-book pattern. Image cells share rows with colour fills.</p>
+      <GridEditor id="dev-editor-16" defaultFields={16} initialMarkdown={sample16} />
+    </section>
+
+    <section class="dev-fixture-section">
+      <h2>4. 32-field editorial density</h2>
+      <p>Ten cells in a 4×8 matrix. Stress-tests cell render performance.</p>
+      <GridEditor id="dev-editor-32" defaultFields={32} initialMarkdown={sample32} />
+    </section>
+
+    <section class="dev-fixture-section">
+      <h2>Event log</h2>
+      <p>
+        Each editor instance dispatches <code>pilcrow:grid-editor-changed</code>
+        on init. The log below shows the serialised directive markdown emitted
+        by each. Useful for verifying round-trip behaviour.
+      </p>
+      <pre class="dev-fixture-event-log" id="event-log">Loading…</pre>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .dev-fixture {
+    max-width: 80ch;
+    margin: 2rem auto;
+    padding: 0 1rem;
+  }
+  .dev-fixture-header h1 {
+    font-size: 1.5em;
+    margin: 0 0 0.5rem;
+  }
+  .dev-fixture-header p {
+    color: var(--muted);
+    font-size: 0.95em;
+  }
+  .dev-fixture-disclaimer {
+    font-size: 0.85em;
+    font-style: italic;
+  }
+  .dev-fixture-section {
+    margin: 3rem 0;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+  }
+  .dev-fixture-section h2 {
+    font-size: 1.15em;
+    margin: 0 0 0.5rem;
+  }
+  .dev-fixture-section p {
+    color: var(--muted);
+    font-size: 0.9em;
+    margin: 0 0 1rem;
+  }
+  code, kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    background: var(--rule);
+    padding: 0.05em 0.3em;
+    border-radius: 2px;
+  }
+  .dev-fixture-event-log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.75em;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    padding: 0.75rem;
+    max-height: 24rem;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+</style>
+
+<script>
+  // Subscribe to grid-editor change events from all four instances and append
+  // them to the on-page event log. Useful for verifying that the initial
+  // round-trip produces sensible markdown.
+  const log = document.getElementById('event-log');
+  if (log) {
+    log.textContent = '';
+    document.addEventListener('pilcrow:grid-editor-changed', (e) => {
+      const detail = (e as CustomEvent).detail as { markdown: string; source: string };
+      const targetId = (e.target as HTMLElement | null)?.id ?? '?';
+      const stamp = new Date().toISOString().slice(11, 19);
+      log.textContent += `[${stamp}] ${targetId} (${detail.source}):\n${detail.markdown}\n\n`;
+    });
+  }
+</script>

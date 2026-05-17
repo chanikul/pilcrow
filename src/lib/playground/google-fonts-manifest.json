@@ -1,0 +1,473 @@
+[
+  {
+    "family": "Fraunces",
+    "category": "serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "dropCapWeightOverride": 600,
+    "staticOnly": false
+  },
+  {
+    "family": "Newsreader",
+    "category": "serif",
+    "weights": [400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "dropCapWeightOverride": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Source Serif 4",
+    "category": "serif",
+    "weights": [200, 300, 400, 600, 700, 900],
+    "hasItalic": true,
+    "dropCapWeight": 600,
+    "dropCapWeightOverride": 600,
+    "staticOnly": false
+  },
+  {
+    "family": "EB Garamond",
+    "category": "serif",
+    "weights": [400, 500, 600, 700, 800],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "dropCapWeightOverride": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Crimson Pro",
+    "category": "serif",
+    "weights": [200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "dropCapWeightOverride": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Literata",
+    "category": "serif",
+    "weights": [300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "dropCapWeightOverride": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Lora",
+    "category": "serif",
+    "weights": [400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Libre Baskerville",
+    "category": "serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Alegreya",
+    "category": "serif",
+    "weights": [400, 500, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Playfair Display",
+    "category": "serif",
+    "weights": [400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Merriweather",
+    "category": "serif",
+    "weights": [300, 400, 700, 900],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "PT Serif",
+    "category": "serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Bitter",
+    "category": "serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Cardo",
+    "category": "serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Vollkorn",
+    "category": "serif",
+    "weights": [400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Spectral",
+    "category": "serif",
+    "weights": [200, 300, 400, 500, 600, 700, 800],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Cormorant",
+    "category": "serif",
+    "weights": [300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Cormorant Garamond",
+    "category": "serif",
+    "weights": [300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Gentium Plus",
+    "category": "serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "GFS Didot",
+    "category": "serif",
+    "weights": [400],
+    "hasItalic": false,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Josefin Slab",
+    "category": "serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Tinos",
+    "category": "serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Arvo",
+    "category": "serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Zilla Slab",
+    "category": "serif",
+    "weights": [300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Noto Serif",
+    "category": "serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Martel",
+    "category": "serif",
+    "weights": [200, 300, 400, 600, 700, 800, 900],
+    "hasItalic": false,
+    "dropCapWeight": 600,
+    "staticOnly": true
+  },
+  {
+    "family": "Unna",
+    "category": "serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Gelasio",
+    "category": "serif",
+    "weights": [400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Stix Two Text",
+    "category": "serif",
+    "weights": [400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Inter",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": false,
+    "dropCapWeight": 500,
+    "dropCapWeightOverride": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Lato",
+    "category": "sans-serif",
+    "weights": [100, 300, 400, 700, 900],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Open Sans",
+    "category": "sans-serif",
+    "weights": [300, 400, 500, 600, 700, 800],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Nunito",
+    "category": "sans-serif",
+    "weights": [200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Source Sans 3",
+    "category": "sans-serif",
+    "weights": [200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "PT Sans",
+    "category": "sans-serif",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Fira Sans",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "DM Sans",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Outfit",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": false,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Noto Sans",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "IBM Plex Sans",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Rubik",
+    "category": "sans-serif",
+    "weights": [300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Work Sans",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Mulish",
+    "category": "sans-serif",
+    "weights": [200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Cabin",
+    "category": "sans-serif",
+    "weights": [400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Karla",
+    "category": "sans-serif",
+    "weights": [200, 300, 400, 500, 600, 700, 800],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Barlow",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Josefin Sans",
+    "category": "sans-serif",
+    "weights": [100, 200, 300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Plus Jakarta Sans",
+    "category": "sans-serif",
+    "weights": [200, 300, 400, 500, 600, 700, 800],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Space Grotesk",
+    "category": "sans-serif",
+    "weights": [300, 400, 500, 600, 700],
+    "hasItalic": false,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Roboto Mono",
+    "category": "monospace",
+    "weights": [100, 300, 400, 500, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Source Code Pro",
+    "category": "monospace",
+    "weights": [200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "IBM Plex Mono",
+    "category": "monospace",
+    "weights": [100, 200, 300, 400, 500, 600, 700],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Fira Mono",
+    "category": "monospace",
+    "weights": [400, 500, 700],
+    "hasItalic": false,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  },
+  {
+    "family": "Space Mono",
+    "category": "monospace",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Courier Prime",
+    "category": "monospace",
+    "weights": [400, 700],
+    "hasItalic": true,
+    "dropCapWeight": null,
+    "staticOnly": true
+  },
+  {
+    "family": "Inconsolata",
+    "category": "monospace",
+    "weights": [200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": false,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "Noto Sans Mono",
+    "category": "monospace",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800, 900],
+    "hasItalic": false,
+    "dropCapWeight": 500,
+    "staticOnly": false
+  },
+  {
+    "family": "JetBrains Mono",
+    "category": "monospace",
+    "weights": [100, 200, 300, 400, 500, 600, 700, 800],
+    "hasItalic": true,
+    "dropCapWeight": 500,
+    "staticOnly": true
+  }
+]

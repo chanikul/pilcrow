@@ -17,3 +17,5 @@ MONETISATION.md
 # Per-package build artifacts
 packages/*/tsconfig.tsbuildinfo
 packages/*/dist/
+launch-assets/
+LAUNCH.md

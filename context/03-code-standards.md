@@ -104,6 +104,26 @@ If a future primitive adds a new aside-class container, add a gate.
 - Index card uses RSS channel description as title text.
 - `PILCROW_SKIP_TYPESET=1` does NOT skip OG generation (separate static route).
 
+## Astro `<script>` interpolation
+
+Astro does **not** interpolate `{expr}` inside `<script>` tags (they are treated as verbatim text). To pass server-side data into a client script use one of:
+
+- `<script type="application/json" id="..." set:html={jsonExpr}></script>` — write raw JSON text content; read via `document.getElementById('...').textContent` and `JSON.parse()`. Preferred for structured data (manifests, pinned lists).
+- `<script is:inline define:vars={{ name: value }}>` — injects a `const name = value;` preamble; the hydration script reads the injected binding directly (no `textContent` parsing).
+- `<script is:inline>` with a `define:vars` object injected as an initialiser — last resort when `set:html` and `define:vars` both fight Astro CSP nonce handling.
+
+**Never** rely on `{expr}` inside a `<script>` block. The literal string `{MANIFEST_JSON}` will ship to the browser unresolved, causing `JSON.parse` to throw and aborting the hydration script before any listeners attach.
+
+## Client-side font loading sequence
+
+When injecting a `<link rel="stylesheet">` for Google Fonts at runtime, the correct loading sequence is:
+
+1. **Await `link.onload`** — confirms the browser has fetched and parsed the CSS and registered the new `@font-face` rules into `document.fonts`. This step is MANDATORY: `link.onload` fires before `document.fonts.ready` becomes meaningful for any FontFace declared in that stylesheet. Skipping it means `document.fonts.ready` resolves against the PREVIOUS FontFace set (the just-injected rules are not yet parsed), so `document.fonts.load()` returns empty arrays and `detectFontFaceDescriptors()` returns `weights: []`.
+2. **Await `document.fonts.ready`** — confirms any pending font operations triggered by the newly registered rules have settled.
+3. **Await `document.fonts.load(spec)`** for each requested weight/style — triggers the actual font-file fetch so canvas measurement sees correct metrics immediately.
+
+The idempotency contract for `injectGoogleFontsLink`: if a `<link>` for the same href already exists, reuse it and attach to its `load`/`error` events rather than injecting a duplicate. If it already loaded (tracked via `data-pilcrow-loaded`), resolve immediately.
+
 ## Forbidden patterns
 
 These have caused real bugs. Don't reach for them.

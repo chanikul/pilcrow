@@ -134,6 +134,9 @@ async function readMeasurementCSS(): Promise<{
   // Sidenote measurement rules (added for sidenote primitive).
   sidenoteFontSize: string;
   sidenoteLineHeight: string;
+  // Grid measurement rules (added for grid primitive — Spec 02-A).
+  pilcrowGridGap: string;
+  pilcrowGridCellPadding: string;
 }> {
   let css: string;
   try {
@@ -202,6 +205,20 @@ async function readMeasurementCSS(): Promise<{
   const sidenoteFontSize   = extractCSSProp(css, 'aside.sidenote', 'font-size')   ?? '0.85em';
   const sidenoteLineHeight = extractCSSProp(css, 'aside.sidenote', 'line-height') ?? '1.4';
 
+  // ─── Grid measurement rules (Spec 02-A) ────────────────────────────────────
+  // The loader page CSS must include the grid layout rules so that CSS Grid
+  // sizes the cells correctly in the playwright measurement context. Without
+  // these rules, .pilcrow-grid falls back to display:block and all cells
+  // span the full prose column width — p.clientWidth then returns the prose
+  // column width for every cell paragraph, causing pretext to set line widths
+  // too wide and producing pt-line spans that overflow narrow cells horizontally.
+  //
+  // The grid-template-rows rule is intentionally omitted: row auto-sizing is
+  // irrelevant for paragraph clientWidth measurement, and omitting the row
+  // definition keeps the loader page height compact (faster measurement pass).
+  const pilcrowGridGap         = extractCSSProp(css, '.pilcrow-grid', 'gap')         ?? '0.75rem';
+  const pilcrowGridCellPadding = extractCSSProp(css, '.pilcrow-grid-cell', 'padding') ?? '1rem';
+
   return {
     htmlFontSize,
     bodyFontFamily,
@@ -224,6 +241,8 @@ async function readMeasurementCSS(): Promise<{
     footnotesLineHeight,
     sidenoteFontSize,
     sidenoteLineHeight,
+    pilcrowGridGap,
+    pilcrowGridCellPadding,
   };
 }
 
@@ -569,6 +588,22 @@ export class PlaywrightRenderer implements TypesetRenderer {
     }
     .shape-around p {
       margin: 0 0 ${m.postBodyPMarginBottom};
+    }
+    /* Grid — measurement-critical rules (Spec 02-A).
+     * Without these rules, .pilcrow-grid falls back to display:block inside the
+     * loader page, causing all .pilcrow-grid-cell elements to span the full prose
+     * column width. p.clientWidth inside a cell then returns the prose-column
+     * width for every paragraph, so pretext measures at the wrong line width and
+     * generates pt-line spans that are wider than the actual rendered cell.
+     * grid-template-rows is omitted intentionally: row sizing doesn't affect
+     * paragraph clientWidth and keeping it out makes the loader page compact. */
+    .pilcrow-grid {
+      display: grid;
+      grid-template-columns: repeat(var(--grid-cols), 1fr);
+      gap: ${m.pilcrowGridGap};
+    }
+    .pilcrow-grid-cell {
+      padding: ${m.pilcrowGridCellPadding};
     }
   </style>
 </head>
@@ -1259,6 +1294,21 @@ export class PlaywrightRenderer implements TypesetRenderer {
         // may not flush before the process exits.
         const warnings: string[] = [];
 
+        // ─── pixelsPerCh: width of '0' in the body font ─────────────────────────
+        // Used for ch-unit conversion (Spec 02-A A3a-i: drop cap suppressed when
+        // a lede paragraph's containing grid cell has measure < 20ch). Computed
+        // once via canvas using the body's resolved font — matches what `ch`
+        // actually means in CSS (the advance width of '0' in the current font).
+        // Fallback to 10px if canvas is unavailable (shouldn't happen in
+        // Chromium, but defensive).
+        const pixelsPerCh = (() => {
+          const bodyCS = getComputedStyle(document.body);
+          const ctx = document.createElement('canvas').getContext('2d');
+          if (!ctx) return 10;
+          ctx.font = `${bodyCS.fontStyle} ${bodyCS.fontWeight} ${bodyCS.fontSize} ${bodyCS.fontFamily}`;
+          return ctx.measureText('0').width || 10;
+        })();
+
         // Track whether we've processed the first non-empty paragraph (the lede).
         // Only the lede gets a drop cap; this flips to false after the first one.
         let isLede = true;
@@ -1299,7 +1349,15 @@ export class PlaywrightRenderer implements TypesetRenderer {
           const baseFontSize = parseFloat(cs.fontSize);
           const resolvedFont = fontShorthand ||
             `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${baseFamily}`;
-          const resolvedWidth = maxWidth || p.clientWidth;
+          // ── Grid cell awareness (Spec 02-A second commit) ─────────────────────
+          // Paragraphs inside a .pilcrow-grid-cell use the cell's content width
+          // as their measure, NOT the post-wide maxWidth. p.clientWidth already
+          // reflects this (the paragraph fills its cell parent), so we override
+          // the maxWidth path to honour cell geometry.
+          const cellAncestor = p.closest('.pilcrow-grid-cell') as HTMLElement | null;
+          const resolvedWidth = cellAncestor
+            ? p.clientWidth
+            : (maxWidth || p.clientWidth);
           const resolvedLineHeight = lineHeight ||
             (parseFloat(cs.lineHeight) || baseFontSize * 1.7);
 
@@ -1326,7 +1384,27 @@ export class PlaywrightRenderer implements TypesetRenderer {
           //   !p.closest('.footnotes')      — GFM footnote list
           //   !p.closest('aside.sidenote')  — sidenote margin note
           // (Drop-cap gate narrowing per user spec — all three confirmed.)
-          if (isLede && dropCap !== false && !p.closest('aside.pullquote') && !p.closest('.footnotes') && !p.closest('aside.sidenote') && !p.closest('.shape-around')) {
+          //
+          // Grid cell narrow-measure guard (Spec 02-A A3a-i, 2026-05-17):
+          // If the lede paragraph's containing grid cell has measure < 20ch,
+          // suppress the drop cap. We STILL consume the isLede slot (so no later
+          // paragraph claims it) and emit a warning. This preserves Pilcrow's
+          // "one cap per post" semantics — when the lede cell is too narrow,
+          // the post simply has no cap.
+          const cellMeasureCh = cellAncestor ? (resolvedWidth / pixelsPerCh) : Infinity;
+          const cellTooNarrowForCap = cellAncestor !== null && cellMeasureCh < 20;
+          const isLedeEligible =
+            isLede && !p.closest('aside.pullquote') && !p.closest('.footnotes') &&
+            !p.closest('aside.sidenote') && !p.closest('.shape-around');
+          if (isLedeEligible && cellTooNarrowForCap) {
+            // Lede landed in a narrow grid cell. Suppress + consume + warn.
+            isLede = false;
+            const cellId = cellAncestor?.dataset['cellId'] ?? '?';
+            warnings.push(
+              `${postPath}: lede paragraph in grid cell #${cellId} has measure ~${cellMeasureCh.toFixed(1)}ch (< 20ch threshold) — drop cap suppressed per A3a-i.`,
+            );
+          }
+          if (isLedeEligible && !cellTooNarrowForCap && dropCap !== false) {
             isLede = false; // consume the lede slot regardless of outcome
 
             // Find the first Unicode letter in the paragraph text.

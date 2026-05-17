@@ -59,21 +59,15 @@ import Settings from '../../components/playground/Settings.astro';
 ---
 
 <Base title="Pilcrow Playground" chrome="minimal">
-  {/* Google Fonts — playground-only payload for the five non-Fraunces
-      families in the picker. Fraunces continues to load locally via
-      global.css's @font-face declarations (the wider site already serves
-      Fraunces from /public/fonts/, so duplicating it here would be
-      wasteful). The other five are body-tuned editorial serifs not used
-      anywhere else on the site, so a single CSS2 stylesheet request is
-      cheaper than self-hosting their TTFs. Variable axes (opsz, wght,
-      ital) are requested as ranges so future weight/opsz controls work
-      without re-requesting the URL. */}
+  {/* Google Fonts — Level 2: individual font loads are deferred to selection
+      time via `loadFont()` in `google-fonts.ts` (FontPicker.astro). The
+      preconnect hint is still useful since virtually all font picks will hit
+      fonts.googleapis.com / fonts.gstatic.com. Fraunces continues to load
+      locally via global.css's @font-face declarations (self-hosted statics
+      in public/fonts/ — unchanged from Level 1). */}
   <Fragment slot="head">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&family=EB+Garamond:ital,wght@0,400..700;1,400&family=Crimson+Pro:ital,wght@0,400..700;1,400&family=Literata:ital,opsz,wght@0,7..72,400..700;1,7..72,400&family=Lora:ital,wght@0,400..700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Alegreya:ital,wght@0,400..700;1,400&family=Playfair+Display:ital,wght@0,400..700;1,400&display=swap"
-    />
   </Fragment>
   <main class="playground" aria-labelledby="playground-title">
     <header class="playground-header">
@@ -398,17 +392,29 @@ import Settings from '../../components/playground/Settings.astro';
   /**
    * Apply restored settings to the Settings form DOM so that
    * Settings.astro's readSettings() returns the correct state.
+   *
+   * Level 2 update: the swatch row is gone. To restore a font, we fire
+   * `pilcrow:font-picker-set` — FontPicker.astro's hydration script listens
+   * for this event and calls `selectFont(family, false)`, which loads the
+   * font and dispatches `pilcrow:font-picker-changed`. Settings.astro then
+   * fires `pilcrow:settings-changed` in response, carrying the restored state.
    */
   const applySettingsToDOM = (settings: PlaygroundSettings): void => {
     const form = document.querySelector<HTMLFormElement>('[data-settings-form]');
     if (!form) return;
 
-    // ── Font swatches ──────────────────────────────────────────────────────
-    const swatches = form.querySelectorAll<HTMLButtonElement>('.font-swatch');
-    for (const swatch of swatches) {
-      const isTarget = swatch.dataset.font === settings.font;
-      swatch.setAttribute('aria-checked', isTarget ? 'true' : 'false');
-    }
+    // ── Font — drive FontPicker via event ─────────────────────────────────
+    // FontPicker.astro listens for this event on `document`. The listener
+    // calls `selectFont()` which loads the font, updates `data-current-font`,
+    // and dispatches `pilcrow:font-picker-changed`. Settings.astro handles
+    // that event and dispatches `pilcrow:settings-changed` with source:'user'.
+    // The init dispatch (setTimeout(0)) runs AFTER this and reads the updated
+    // `data-current-font`, so the restore font is picked up correctly.
+    const fontPickerSetEvent = new CustomEvent<{ family: string }>(
+      'pilcrow:font-picker-set',
+      { detail: { family: settings.font }, bubbles: true },
+    );
+    document.dispatchEvent(fontPickerSetEvent);
 
     // ── Drop-cap toggle ────────────────────────────────────────────────────
     const dropCapInput = form.querySelector<HTMLInputElement>('[data-drop-cap]');

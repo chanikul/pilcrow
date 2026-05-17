@@ -746,6 +746,699 @@ aside.sidenote p {
   text-align: left;
 }
 
+/* ─── Pilcrow grid composition primitive (Spec 02-A, 2026-05-17) ────────────
+ *
+ * Built from :::grid containerDirective via packages/pilcrow-typeset/src/plugins/remark-grid.ts.
+ * Master plan §11 entry 24. Sprint plan: ~/Sandbox/PILCROW_GRID_SPRINT_PLAN.md.
+ *
+ * Grid topology stamped on the container as inline style:
+ *   <div class="pilcrow-grid" data-grid-fields="16" style="--grid-cols: 4; --grid-rows: 4;">
+ *
+ * Cells carry inline grid-column / grid-row positioning (computed by the
+ * occupancy scanner in remark-grid):
+ *   <div class="pilcrow-grid-cell" data-cell-id="1" data-cell-kind="text"
+ *        data-cell-fill="accent" style="grid-column: 1 / span 2; grid-row: 1 / span 1;">
+ *
+ * Canonical matrices (A5a, portrait orientation):
+ *   8 fields  = 2 cols × 4 rows
+ *   16 fields = 4 cols × 4 rows
+ *   32 fields = 4 cols × 8 rows
+ *
+ * Field treatments (D3, 2026-05-17):
+ *   data-cell-fill="paper|muted|accent|rule" — composes from the five :root tokens
+ *   data-cell-kind="text|image|empty"        — text typeset per cell; image renders
+ *                                               an inline-SVG placeholder silhouette;
+ *                                               empty contributes only its color fill
+ *
+ * Mobile fallback at ≤768px (Level 1 precedent): grid collapses to a single
+ * column, cells stack vertically in DOM order, spans flatten.
+ *
+ * Per-cell pretext typesetting is added in a follow-up commit within Deliverable A
+ * (extends playwright.ts). Before that lands, cells use browser-native line
+ * wrapping — the grid renders structurally correctly, just without the per-line
+ * <span class="pt-line"> wrappers inside cells.
+ *
+ * Cross-primitive interactions (cross-primitive matrix at
+ * context/feature-specs/02-A-cross-primitive-matrix.md):
+ *   :::sidenote inside :::cell — sidenote hoisted to .post-body by the existing
+ *                                 rehype-hoist-sidenotes; may render visually
+ *                                 disconnected from anchor cell (A2a, known).
+ *   :::pullquote inside :::cell — renders normally; cell layout may look unexpected.
+ *   nested :::grid              — error; inner grid replaced with build warning text.
+ */
+
+.pilcrow-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols), 1fr);
+  grid-template-rows: repeat(var(--grid-rows), minmax(3rem, auto));
+  /* Hairline rules between cells via gap-background trick. The 1px gap bleeds
+   * --rule through the grid; each cell's opaque --paper background covers it.
+   * No intersection doubling (vs. per-cell borders). */
+  gap: 1px;
+  background-color: var(--rule);
+  border: 1px solid var(--rule);
+  /* Span the full prose column width. The grid sits inside .post-body's grid
+   * column 2 (the 65ch prose column). For grids that want to extend into the
+   * right-margin column, future authoring can apply grid-column: 2 / 5 directly. */
+  margin: 3rem 0;
+}
+
+.pilcrow-grid-cell {
+  /* Inline grid-column / grid-row come from remark-grid's occupancy scanner.
+   * Inline style is the right surface here — each cell's position is unique
+   * and not expressible via a small set of attribute presets. */
+  padding: 1rem;
+  /* Cells must declare an opaque background — required by the gap-background
+   * trick on .pilcrow-grid (otherwise --rule leaks through). Fill-attribute
+   * rules below override this with --muted / --accent / --rule as needed. */
+  background: var(--paper);
+  /* contain: layout was removed (2026-05-17 bug fix) — CSS containment prevents
+   * the grid's auto-row track-sizing algorithm from seeing the cell's content
+   * height, causing text to be clipped at the minimum row height (3rem) when
+   * content wraps. Per-cell pretext uses p.clientWidth directly (not a cached
+   * CSS property), so containment provides no measurement benefit here. */
+  /* Min-height keeps empty cells visible (otherwise they collapse to zero). */
+  min-height: 3rem;
+}
+
+/* Field-fill treatments — compose from the five :root tokens only. */
+.pilcrow-grid-cell[data-cell-fill="paper"] {
+  background: var(--paper);
+  color: var(--ink);
+}
+/* ─── Decision 1c (2026-05-17): muted-fill → --rule tint ─── */
+.pilcrow-grid-cell[data-cell-fill="muted"] {
+  background: var(--rule);
+  color: var(--ink);
+}
+/* ─── Decision 3a (2026-05-17): accent → strike (corner-mark treatment) ─── */
+.pilcrow-grid-cell[data-cell-fill="accent"] {
+  background: var(--accent);
+  color: var(--paper);
+  padding: 0.5rem 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.pilcrow-grid-cell[data-cell-fill="rule"] {
+  background: var(--rule);
+  color: var(--ink);
+}
+
+/* Links inside coloured cells maintain contrast.
+ * Decision 1c: muted now sits on --rule (light), so links use --accent text
+ * on a --rule-tinted background for legibility (not inverted).
+ * Accent fill remains inverted (--paper on --accent). */
+.pilcrow-grid-cell[data-cell-fill="muted"] a {
+  color: var(--accent);
+  text-decoration-color: var(--rule);
+}
+.pilcrow-grid-cell[data-cell-fill="accent"] a {
+  color: var(--paper);
+  text-decoration-color: var(--paper);
+}
+
+/* Image cells host the placeholder SVG silhouette emitted by remark-grid.
+ * Real image upload is Level 3 (Deliverable G of a future sprint, gated on
+ * the playground plan). Until then, image cells render a crossed-rectangle
+ * silhouette in --rule colour so the layout intent reads correctly. */
+.pilcrow-grid-cell[data-cell-kind="image"] {
+  padding: 0;
+  overflow: hidden;
+}
+.pilcrow-grid-cell-image-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 8rem;
+}
+
+/* Empty cells: visible only via their fill (if any), no inner content. */
+.pilcrow-grid-cell[data-cell-kind="empty"] {
+  /* No special rules beyond what the data-cell-fill attribute provides. */
+}
+
+/* Paragraphs inside grid cells override .post-body p defaults — the 1.8rem
+ * margin-bottom is too generous for cell-scoped prose. Cells handle their
+ * own vertical rhythm. */
+.pilcrow-grid-cell p {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+}
+.pilcrow-grid-cell p:last-child {
+  margin-bottom: 0;
+}
+
+/* Headings inside cells: reduce the .post-body cascade so a cell-scoped h1
+ * doesn't try to behave like the post's title heading. */
+.pilcrow-grid-cell h1,
+.pilcrow-grid-cell h2,
+.pilcrow-grid-cell h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25em;
+  line-height: 1.2;
+}
+
+/* Build-warning placeholders from remark-grid (missing fields, nested grid). */
+.pilcrow-grid-error {
+  padding: 1rem;
+  border: 1px dashed var(--rule);
+  color: var(--muted);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.85em;
+  margin: 1rem 0;
+}
+
+/* ─── Mobile fallback ────────────────────────────────────────────────────────
+ * Below 768px (Level 1 playground precedent), the grid collapses to a single
+ * column. Cells stack vertically in DOM order. Spans flatten — every cell
+ * spans the full single column regardless of authored colspan/rowspan. Image
+ * cells preserve aspect ratio (the SVG silhouette handles this via its
+ * preserveAspectRatio="xMidYMid slice" attribute). Color fills preserve.
+ *
+ * This is a deliberate simplification: a 32-field grid on a 320px viewport is
+ * unreadable in any layout. The single-column stack is the same compromise
+ * the playground uses for its editor/preview split.
+ */
+@media (max-width: 768px) {
+  .pilcrow-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+  .pilcrow-grid-cell {
+    /* Override inline grid-column / grid-row from the occupancy scanner. */
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+}
+
+/* ─── Grid editor (authoring surface — Spec 02-B, skeleton commit) ──────────
+ *
+ * The editor is an INTERACTIVE surface mounted at /playground/ (Deliverable C),
+ * /grid/ (Deliverable D), and the `bun run grid` dev tool (Deliverable E).
+ * Scoped under `.grid-editor` so styles never leak into the shipped post
+ * output (which uses .pilcrow-grid + .pilcrow-grid-cell instead).
+ *
+ * Skeleton commit behaviour: cell render + click-to-select + arrow-key nav +
+ * Esc to deselect. Inline contenteditable, floating toolbar, drag handles,
+ * add/remove controls are deferred to subsequent commits.
+ *
+ * Locked taste calls (recorded for CSS implementation reference):
+ *   B1a — Astro + vanilla TypeScript
+ *   B5a-meta — Floating toolbar (positioned next commit)
+ *   B6c — Same UI on mobile, grid collapses to single column
+ *
+ * Visual register: more chrome than .pilcrow-grid (this is an editor, not
+ * the editorial product). Cell borders visible. Focus ring on selected
+ * cell uses var(--accent) — same convention as the playground's editor
+ * textarea focus.
+ */
+.grid-editor {
+  /* Container is a flex column so future toolbar additions stack above the
+   * grid without restructuring. */
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 2rem 0;
+  /* Editor lives inside the prose column; constrain to prevent overflow into
+   * the sidenote margin on wide viewports. */
+  max-width: 100%;
+}
+
+/* aria-live region. Visually hidden but available to screen readers.
+ * Matches the .visually-hidden pattern used in the drop cap accessibility
+ * duplicate. */
+.grid-editor-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The grid surface itself. Uses CSS grid-auto-flow: dense so cells without
+ * explicit colstart/rowstart fall into the next free slot naturally —
+ * matching remark-grid's row-major occupancy scanner without the editor
+ * needing to compute positions itself. */
+.grid-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols, 4), 1fr);
+  grid-template-rows: repeat(var(--grid-rows, 4), minmax(3rem, auto));
+  grid-auto-flow: dense;
+  gap: 0.5rem;
+  /* Editor surface visible border so users can see the canvas extent even
+   * with no cells placed. Subtler than the .pilcrow-grid hairline trick. */
+  border: 1px solid var(--rule);
+  padding: 0.5rem;
+  background: var(--paper);
+}
+
+/* Cells in the editor read as distinct objects with visible borders — they
+ * are interactive targets, not the editorial output. The .pilcrow-grid-cell
+ * rules use no border by default (the grid IS the layout); .grid-editor-cell
+ * adds chrome appropriate to an authoring surface. */
+.grid-editor-cell {
+  position: relative;
+  padding: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--rule);
+  min-height: 3rem;
+  cursor: pointer;
+  /* contain: layout matches the post-side .pilcrow-grid-cell rule —
+   * per-cell containment keeps content from influencing neighbouring
+   * cells' layout. */
+  contain: layout;
+  /* Transition on selection state so the focus ring fades rather than snaps. */
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+/* Hover state. Editorial — barely visible. */
+.grid-editor-cell:hover {
+  border-color: var(--muted);
+}
+
+/* Focus visible state (keyboard navigation). Per Pilcrow's a11y convention
+ * — distinct outline using var(--accent). */
+.grid-editor-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Selection state. The data-selected attribute is set by selectCell() in
+ * the hydration script when the user clicks or arrow-keys to a cell.
+ * Visually subtle — emphasises the focused cell without overwhelming
+ * neighbouring cells. */
+.grid-editor-cell[data-selected="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Cell content text. Inherits Fraunces from .post-body when the editor sits
+ * inside a post-body container; in the standalone /grid/ route the editor's
+ * host page sets the font. */
+.grid-editor-cell-content {
+  font-family: inherit;
+  font-size: 1em;
+  line-height: 1.4;
+  /* white-space: pre-wrap preserves the user's authored newlines + spaces
+   * verbatim, matching the B3a "plain text only" decision. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Fill treatments — same five tokens as .pilcrow-grid-cell. Editor + output
+ * use parallel data-cell-fill attributes so visual parity is exact. */
+.grid-editor-cell[data-cell-fill="paper"] {
+  background: var(--paper);
+  color: var(--ink);
+}
+.grid-editor-cell[data-cell-fill="muted"] {
+  background: var(--muted);
+  color: var(--paper);
+}
+.grid-editor-cell[data-cell-fill="accent"] {
+  background: var(--accent);
+  color: var(--paper);
+}
+.grid-editor-cell[data-cell-fill="rule"] {
+  background: var(--rule);
+  color: var(--ink);
+}
+
+/* Image cell — placeholder silhouette identical to remark-grid's output. */
+.grid-editor-cell[data-cell-kind="image"] {
+  padding: 0;
+  overflow: hidden;
+}
+.grid-editor-cell-image-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 6rem;
+}
+
+/* No-JS fallback message. Visible only when the hydration script never runs
+ * (browser with JS disabled). */
+.grid-editor-noscript {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.875em;
+  color: var(--muted);
+  padding: 1rem;
+  border: 1px dashed var(--rule);
+  margin: 1rem 0;
+}
+.grid-editor-fallback {
+  display: block;
+  width: 100%;
+  min-height: 12rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875em;
+  padding: 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+}
+
+/* Top toolbar (B4a — third commit within 02-B). Always visible above the grid;
+ * carries global controls: field-count switcher + Add cell button + cell-count
+ * indicator. Segmented control for field count matches the editorial register
+ * (small, restrained, palette-correct). */
+.grid-editor-top-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.85em;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+.grid-editor-top-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.grid-editor-top-toolbar-label {
+  color: var(--muted);
+}
+.grid-editor-top-toolbar-segmented {
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.grid-editor-top-toolbar-segmented label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  border-right: 1px solid var(--rule);
+  transition: background 100ms ease-out;
+}
+.grid-editor-top-toolbar-segmented label:last-child {
+  border-right: none;
+}
+.grid-editor-top-toolbar-segmented label:hover {
+  background: var(--rule);
+}
+.grid-editor-top-toolbar-segmented input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.grid-editor-top-toolbar-segmented label:has(input:checked) {
+  background: var(--accent);
+  color: var(--paper);
+}
+.grid-editor-top-toolbar-segmented label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.grid-editor-add-cell {
+  padding: 0.3rem 0.75rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  transition: border-color 100ms ease-out;
+}
+.grid-editor-add-cell:hover {
+  border-color: var(--accent);
+}
+.grid-editor-add-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.grid-editor-cell-count {
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-left: auto;
+}
+
+/* Right-click context menu (B4a). Hidden by default; positioned at the click
+ * coordinates inside the canvas. Small, editorial — not a Material card. */
+.grid-editor-context-menu {
+  position: absolute;
+  z-index: 20;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  box-shadow: 0 2px 6px rgba(26, 26, 26, 0.12);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.85em;
+  color: var(--ink);
+  min-width: 12rem;
+}
+.grid-editor-context-menu[hidden] {
+  display: none;
+}
+.grid-editor-context-menu li {
+  margin: 0;
+}
+.grid-editor-context-menu li[role="separator"] {
+  height: 1px;
+  background: var(--rule);
+  margin: 0.25rem 0;
+}
+.grid-editor-context-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 100ms ease-out;
+}
+.grid-editor-context-menu button:hover,
+.grid-editor-context-menu button:focus-visible {
+  background: var(--rule);
+  outline: none;
+}
+.grid-editor-context-menu button kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+.grid-editor-context-menu-danger {
+  color: var(--accent) !important;
+}
+
+/* Edit mode (B2a — second commit within 02-B). The cell content area becomes
+ * contenteditable=plaintext-only on Enter / double-click. Visual: thicker
+ * accent outline so the user knows "you're editing this now"; cursor
+ * caret-color uses --accent (subtle but matches the focus ring). */
+.grid-editor-cell[data-editing="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.grid-editor-cell[data-editing="true"] .grid-editor-cell-content {
+  outline: none; /* the cell border already provides the focus indicator */
+  caret-color: var(--accent);
+  cursor: text;
+}
+/* contenteditable defaults to outline:auto on focus; suppress because the
+ * cell-level border is the editor's affordance. */
+.grid-editor-cell-content[contenteditable]:focus {
+  outline: none;
+}
+
+/* Floating toolbar (B5a-meta — second commit within 02-B). Appears on cell
+ * select, positioned by getBoundingClientRect math in the hydration script.
+ * Hidden by default via [hidden] attribute + the data-toolbar-hidden CSS
+ * override (defence in depth: if hidden attr ever fails to remove, the data
+ * attribute still hides). */
+.grid-editor-canvas {
+  position: relative;
+}
+.grid-editor-toolbar {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  /* Subtle lift — editorial register, not a Material drop shadow. */
+  box-shadow: 0 1px 4px rgba(26, 26, 26, 0.08);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 0.8em;
+  color: var(--ink);
+  /* Default visibility hidden so initial positioning math can run without a
+   * visible jump. positionToolbar() flips this to visible after measuring. */
+  visibility: hidden;
+}
+.grid-editor-toolbar[data-toolbar-hidden="true"] {
+  display: none;
+}
+
+.grid-editor-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  margin: 0;
+  border: none;
+}
+.grid-editor-toolbar-group legend {
+  font-size: 0.85em;
+  color: var(--muted);
+  padding: 0 0.35rem 0 0;
+  border-right: 1px solid var(--rule);
+  margin-right: 0.35rem;
+}
+
+/* Radio labels in the toolbar — visually compact, clickable as a unit. */
+.grid-editor-toolbar-group label {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  transition: border-color 100ms ease-out, background 100ms ease-out;
+}
+.grid-editor-toolbar-group label:hover {
+  background: var(--rule);
+}
+.grid-editor-toolbar-group input[type="radio"] {
+  /* Hide the native radio; the label's pseudo-state carries the visual. */
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.grid-editor-toolbar-group input[type="radio"]:checked + span {
+  font-weight: 600;
+}
+.grid-editor-toolbar-group label:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--paper);
+}
+/* Focus visible for keyboard nav — accent ring on the label when its radio is
+ * focused via Tab/arrow keys. */
+.grid-editor-toolbar-group label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Fill swatches — small coloured square next to the label text. */
+.grid-editor-fill-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.grid-editor-fill-swatch::before {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+}
+.grid-editor-fill-swatch[data-fill-swatch=""]::before {
+  /* None — diagonal slash for "no fill" indicator. */
+  background:
+    linear-gradient(135deg,
+      transparent calc(50% - 0.5px),
+      var(--muted) calc(50% - 0.5px),
+      var(--muted) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px));
+  background-color: var(--paper);
+}
+.grid-editor-fill-swatch[data-fill-swatch="paper"]::before { background: var(--paper); }
+.grid-editor-fill-swatch[data-fill-swatch="muted"]::before { background: var(--muted); }
+.grid-editor-fill-swatch[data-fill-swatch="accent"]::before { background: var(--accent); }
+.grid-editor-fill-swatch[data-fill-swatch="rule"]::before { background: var(--rule); }
+
+/* Span steppers — compact +/- buttons flanking a numeric output. */
+.grid-editor-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.grid-editor-stepper-label {
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-right: 0.2rem;
+}
+.grid-editor-stepper button {
+  width: 1.6em;
+  height: 1.6em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 1em;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0;
+  transition: border-color 100ms ease-out, background 100ms ease-out;
+}
+.grid-editor-stepper button:hover {
+  border-color: var(--accent);
+}
+.grid-editor-stepper button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.grid-editor-stepper output {
+  display: inline-block;
+  min-width: 1.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mobile fallback per B6c. Editor's grid collapses to single column;
+ * cells flatten regardless of authored spans. The floating toolbar also
+ * collapses to a static block above each selected cell so it doesn't
+ * overflow the narrow viewport. */
+@media (max-width: 768px) {
+  .grid-editor-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+  .grid-editor-cell {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+  /* On mobile, swap floating positioning for a docked-at-canvas-top toolbar.
+   * Avoids overflow + finger-fumbling with a tight floating element. */
+  .grid-editor-toolbar {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    margin: 0.5rem 0;
+    visibility: visible !important;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
 /* ─── Pilcrow footer (growth loop) ──────────────────────────────────────────
  * "Typeset with Pilcrow ¶" — rendered on every page when showPilcrowFooter
  * is true in src/config/site.ts.
@@ -909,3 +1602,4 @@ aside.sidenote p {
     width: auto !important;
   }
 }
+

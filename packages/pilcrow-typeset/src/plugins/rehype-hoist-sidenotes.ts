@@ -30,6 +30,20 @@
  *   markers to the anchor <p> in that same ascending order, so the CSS counter
  *   fires correctly.
  *
+ * Cross-primitive: sidenote inside a grid cell (Spec 02-A A2a):
+ *   When a <span class="sidenote-ref"> is nested inside a .pilcrow-grid-cell,
+ *   the immediate parent is the grid cell, not .post-body. The hoist must walk
+ *   the parent chain to find the .pilcrow-grid ancestor (a direct child of
+ *   .post-body), then splice the <aside> into .post-body after the grid element.
+ *
+ *   The anchor <p> is still the last <p> sibling BEFORE the span in the cell's
+ *   children — the marker is appended there. The aside lands after the whole
+ *   grid (visually disconnected from the cell — documented A2a limitation).
+ *
+ *   Implementation: a pre-pass builds a WeakMap<Element, Element|Root> parent
+ *   map over the full hast tree. Used in the collection pass to walk ancestors
+ *   without adding a dependency on unist-util-visit-parents.
+ *
  * Note on pretext compatibility:
  *   playwright.ts reads <sup class="sidenote-marker"> outerHTML BEFORE the
  *   p.innerHTML = ... assignment, and re-appends them AFTER. This preserves
@@ -42,7 +56,7 @@
  */
 
 import { visit } from 'unist-util-visit';
-import type { Root, Element, Node } from 'hast';
+import type { Root, Element, Node, ElementContent, RootContent } from 'hast';
 
 /** Check if a hast element has a given class name. */
 function hasClass(el: Element, cls: string): boolean {
@@ -53,21 +67,40 @@ function hasClass(el: Element, cls: string): boolean {
 
 export default function rehypeHoistSidenotes() {
   return (tree: Root) => {
+    // ─── Pre-pass: build a full parent map over the hast tree ──────────────────
+    // We need ancestor chains for the grid-cell hoist path. The visit() API gives
+    // only the immediate parent; a WeakMap avoids adding unist-util-visit-parents.
+    const parentMap = new WeakMap<Element, Element | Root>();
+
+    visit(tree, 'element', (node: Element, _index, parent: Root | Element | undefined) => {
+      if (parent !== undefined) {
+        parentMap.set(node, parent);
+      }
+    });
+
     // ─── Pass 1: Collect all sidenote-ref spans with their parent and index ───
     // We collect first, then mutate, to avoid invalidating indices during the walk.
     //
     // Each entry records:
     //   span       — the <span class="sidenote-ref"> element
-    //   parent     — the parent element containing the span (body container)
+    //   parent     — the IMMEDIATE parent of the span (may be a grid cell)
     //   index      — the span's index in parent.children at collection time
     //   anchorP    — the last <p> sibling BEFORE this span in parent.children
     //   anchorIdx  — the anchorP's index in parent.children
+    //   hoistParent — the element where the <aside> should land as a child.
+    //                 For normal prose: same as parent (a .post-body-level container).
+    //                 For grid-cell case: the .post-body container (or root).
+    //   hoistIndex  — the index in hoistParent.children where the aside will be
+    //                 spliced (replaces the span's position for normal, or after
+    //                 the grid element for the grid-cell case).
     type SidenoteEntry = {
       span: Element;
       parent: Root | Element;
       index: number;
       anchorP: Element | null;
       anchorIdx: number;
+      hoistParent: Root | Element;
+      hoistIndex: number;
     };
 
     const entries: SidenoteEntry[] = [];
@@ -77,7 +110,7 @@ export default function rehypeHoistSidenotes() {
       if (!hasClass(node, 'sidenote-ref')) return;
       if (parent === undefined || index === undefined) return;
 
-      // Find the last <p> sibling BEFORE this span in document order.
+      // Find the last <p> sibling BEFORE this span in the immediate parent's children.
       let anchorP: Element | null = null;
       let anchorIdx = -1;
       for (let i = index - 1; i >= 0; i--) {
@@ -89,7 +122,55 @@ export default function rehypeHoistSidenotes() {
         }
       }
 
-      entries.push({ span: node, parent, index, anchorP, anchorIdx });
+      // ── Grid-cell hoist path (Spec 02-A A2a) ──────────────────────────────
+      // If the immediate parent is (or is inside) a .pilcrow-grid-cell, walk up
+      // the ancestor chain to find the .pilcrow-grid element and its parent.
+      // The aside lands as a sibling of the grid in the post-body container.
+      //
+      // Ancestor walk: parent → grid-cell → grid → post-body (or root).
+      // We stop when we find an ancestor that is NOT a .pilcrow-grid-cell or
+      // .pilcrow-grid, i.e., when we've exited the grid structure.
+      let hoistParent: Root | Element = parent;
+      let hoistIndex: number = index;
+
+      const parentEl = parent.type === 'element' ? (parent as Element) : null;
+      const isInsideGridCell =
+        parentEl !== null &&
+        hasClass(parentEl, 'pilcrow-grid-cell');
+
+      if (isInsideGridCell) {
+        // Walk up: grid-cell → grid → whatever contains the grid.
+        // parentMap gives us the chain without a separate visitParents call.
+        let cursor: Element | Root | undefined = parent as Element;
+        let gridEl: Element | undefined;
+
+        while (cursor && cursor.type === 'element') {
+          const el = cursor as Element;
+          if (hasClass(el, 'pilcrow-grid')) {
+            gridEl = el;
+            break;
+          }
+          cursor = parentMap.get(el) ?? undefined;
+        }
+
+        if (gridEl !== undefined) {
+          const gridParent = parentMap.get(gridEl) ?? tree;
+          // Find the grid element's index in its parent's children.
+          const gridParentChildren = (gridParent as Root | Element).children;
+          // gridEl is an Element; children may be ElementContent[] or RootContent[].
+          // Element satisfies both ElementContent and RootContent, so indexOf works
+          // with a type assertion to the common supertype.
+          const gridIdx = gridParentChildren.indexOf(gridEl as ElementContent & RootContent);
+          if (gridIdx !== -1) {
+            hoistParent = gridParent;
+            // Splice the aside AFTER the grid element (gridIdx + 1).
+            // Using gridIdx + 1 so the aside immediately follows the grid.
+            hoistIndex = gridIdx + 1;
+          }
+        }
+      }
+
+      entries.push({ span: node, parent, index, anchorP, anchorIdx, hoistParent, hoistIndex });
     });
 
     if (entries.length === 0) return;
@@ -136,11 +217,16 @@ export default function rehypeHoistSidenotes() {
     // To handle multiple sidenotes with the same anchorP, we group entries by
     // anchorP object reference and sort within each group.
     //
-    // The descending-order splice replaces the span in parent.children with the
-    // aside. The marker is appended to anchorP.children.
+    // For the grid-cell hoist path:
+    //   - The span is REMOVED from the cell's children (splice out, nothing replaces it).
+    //   - The aside is INSERTED after the grid element in the hoistParent.
+    //   - The marker is appended to the anchorP inside the cell.
+    //
+    // For the normal hoist path:
+    //   - The span is REPLACED by the aside in parent.children (same as before).
+    //   - The marker is appended to the anchorP.
 
     // Group by anchorP for correct marker ordering.
-    // Key: anchorP Element (by reference via WeakMap).
     const markersByAnchor = new Map<Element | null, Array<{ markerEl: Element; id: number }>>();
 
     for (const entry of entries) {
@@ -162,7 +248,10 @@ export default function rehypeHoistSidenotes() {
     }
 
     // Process span replacements in descending index order.
-    const sortedDesc = [...entries].sort((a, b) => b.index - a.index);
+    // For grid-cell entries, the hoistParent/hoistIndex may differ from
+    // parent/index. We sort by descending hoistIndex within the same hoistParent
+    // to keep splice offsets valid.
+    const sortedDesc = [...entries].sort((a, b) => b.hoistIndex - a.hoistIndex);
 
     for (const entry of sortedDesc) {
       const spanChildren = entry.span.children.filter(
@@ -173,9 +262,19 @@ export default function rehypeHoistSidenotes() {
       );
       if (!asideEl) continue;
 
-      // Replace the <span class="sidenote-ref"> with the <aside> in parent.children.
-      // parent.children[entry.index] is the span — replace it with the aside.
-      entry.parent.children.splice(entry.index, 1, asideEl);
+      const isGridCellHoist = entry.hoistParent !== entry.parent;
+
+      if (isGridCellHoist) {
+        // Grid-cell path: remove the span from the cell's children, then
+        // insert the aside after the grid element in hoistParent.
+        entry.parent.children.splice(entry.index, 1);
+        // Insert aside at hoistIndex in hoistParent.children.
+        // asideEl is an Element which satisfies both ElementContent and RootContent.
+        (entry.hoistParent.children as Array<ElementContent>).splice(entry.hoistIndex, 0, asideEl);
+      } else {
+        // Normal path: replace the span with the aside in parent.children.
+        (entry.parent.children as Array<ElementContent>).splice(entry.index, 1, asideEl);
+      }
     }
 
     // Append markers to their anchor <p> in ascending ID order.

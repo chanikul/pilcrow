@@ -1,0 +1,964 @@
+---
+/**
+ * Pilcrow Playground — Font Picker (Spec 01 / Level 2).
+ *
+ * Replaces the ten-swatch static font row from Level 1 Settings.astro with a
+ * searchable combobox backed by the committed Google Fonts manifest
+ * (`src/lib/playground/google-fonts-manifest.json`).
+ *
+ * ─── Decision A1 (catalogue source) ──────────────────────────────────────────
+ *   Build-time committed JSON manifest. Not regenerated at runtime or on
+ *   every build — run `scripts/gen-google-fonts-manifest.ts` manually to
+ *   refresh. The manifest is imported here and bundled into the page.
+ *
+ * ─── Decision B2 (arbitrary family input) ─────────────────────────────────────
+ *   A "Custom family" text input below the combobox accepts any Google Fonts
+ *   family name not in the manifest. The `loadFont` / `detectFontFaceDescriptors`
+ *   path runs for custom entries. A muted advisory is shown for all custom picks.
+ *
+ * ─── Decision C1 (variable-TTF filtering) ────────────────────────────────────
+ *   Variable-only families are filtered at manifest generation time and never
+ *   appear in the picker. Custom entries bypass the filter; the advisory covers
+ *   this gap.
+ *
+ * ─── Decision D1 (search UX) ──────────────────────────────────────────────────
+ *   Native `<input type="text">` with a custom `role="listbox"` dropdown.
+ *   The six Level-1 defaults (Fraunces, Newsreader, Source Serif 4, EB Garamond,
+ *   Crimson Pro, Literata) are pinned at the top of the list as a group labelled
+ *   "Favourites". Typing filters the full list. Clicking a result or pressing
+ *   Enter selects the font and triggers lazy load + re-typeset dispatch.
+ *
+ * ─── Decision F3 (hybrid font serving) ────────────────────────────────────────
+ *   Six Level-1 families remain self-hosted (Fraunces via global.css @font-face;
+ *   others via the Google Fonts CSS2 link in index.astro). Additional catalogue
+ *   and custom families load via Google Fonts CDN at selection time.
+ *
+ * ─── State management ─────────────────────────────────────────────────────────
+ *   The picker writes the currently-selected family to the `data-current-font`
+ *   attribute on its host element. Settings.astro's `readSettings()` reads from
+ *   this attribute. The picker dispatches `pilcrow:font-picker-changed` with
+ *   `{ family, dropCapWeight }` after each successful load; Settings.astro's
+ *   handler calls `dispatch()` to re-fire `pilcrow:settings-changed` with the
+ *   full settings object.
+ *
+ * ─── JS-disabled fallback ─────────────────────────────────────────────────────
+ *   The combobox degrades to a native `<select>` element when JS is off.
+ *   The custom listbox is hidden via `.listbox-open` class which requires JS
+ *   to toggle. The `<select>` remains in the DOM (visually hidden when JS is
+ *   on) and carries all manifest options, so keyboard/screen-reader access is
+ *   never gated on JS.
+ */
+
+import manifest from '../../lib/playground/google-fonts-manifest.json';
+
+// ─── Level-1 pinned families (must appear at top of list) ────────────────────
+// These are the ten families from the original swatch row, kept at the top of
+// the combobox as a "Favourites" group so existing users find them immediately.
+const PINNED_FAMILIES = [
+  'Fraunces',
+  'Newsreader',
+  'Source Serif 4',
+  'EB Garamond',
+  'Crimson Pro',
+  'Literata',
+  'Lora',
+  'Libre Baskerville',
+  'Alegreya',
+  'Playfair Display',
+] as const;
+
+type PinnedFamily = (typeof PINNED_FAMILIES)[number];
+
+// ─── Manifest type (mirrors FontManifestEntry in the generation script) ───────
+interface ManifestEntry {
+  family: string;
+  category: 'serif' | 'sans-serif' | 'monospace';
+  weights: number[];
+  hasItalic: boolean;
+  dropCapWeight: number | null;
+  dropCapWeightOverride?: number | null;
+  staticOnly: boolean;
+}
+
+// Cast the imported JSON to a typed array.
+const MANIFEST: ManifestEntry[] = manifest as ManifestEntry[];
+
+// Build a lookup by family name for O(1) access from the hydration script.
+const MANIFEST_BY_FAMILY = new Map<string, ManifestEntry>(
+  MANIFEST.map((e) => [e.family, e]),
+);
+
+// Effective drop-cap weight: use override if present, otherwise derived value.
+const effectiveDropCap = (entry: ManifestEntry): number | null =>
+  entry.dropCapWeightOverride !== undefined
+    ? entry.dropCapWeightOverride
+    : entry.dropCapWeight;
+
+// ─── Partition the manifest ───────────────────────────────────────────────────
+const pinnedSet = new Set<string>(PINNED_FAMILIES);
+const pinnedEntries = PINNED_FAMILIES
+  .map((f) => MANIFEST_BY_FAMILY.get(f))
+  .filter((e): e is ManifestEntry => e !== undefined);
+const otherEntries = MANIFEST.filter((e) => !pinnedSet.has(e.family));
+
+// Default font — always Fraunces.
+const DEFAULT_FONT = 'Fraunces';
+
+// Serialize the manifest to JSON for the hydration script. The full manifest
+// is small enough (~15 KB uncompressed) to inline without a separate fetch.
+const MANIFEST_JSON = JSON.stringify(
+  MANIFEST.map((e) => ({
+    family: e.family,
+    category: e.category,
+    weights: e.weights,
+    hasItalic: e.hasItalic,
+    dropCapWeight: effectiveDropCap(e),
+    staticOnly: e.staticOnly,
+  })),
+);
+
+const PINNED_FAMILIES_JSON = JSON.stringify(Array.from(PINNED_FAMILIES));
+---
+
+<div class="font-picker" data-font-picker data-current-font={DEFAULT_FONT}>
+  {/* ─── Native <select> fallback (always in DOM; visually hidden when JS is on) */}
+  {/* WCAG: screen readers and keyboard users access the full family list */}
+  {/* via the native select even when the custom listbox is active. */}
+  <label for="font-picker-select" class="visually-hidden">Body font</label>
+  <select
+    id="font-picker-select"
+    class="font-picker-select"
+    aria-label="Body font"
+    data-font-picker-select
+  >
+    <optgroup label="Favourites">
+      {pinnedEntries.map((e) => (
+        <option value={e.family} selected={e.family === DEFAULT_FONT}>
+          {e.family}
+        </option>
+      ))}
+    </optgroup>
+    <optgroup label="All families">
+      {otherEntries.map((e) => (
+        <option value={e.family}>{e.family}</option>
+      ))}
+    </optgroup>
+  </select>
+
+  {/* ─── Custom combobox (JS-only, replaces select visually when JS is on) */}
+  <div class="combobox-wrap" role="group" aria-label="Body font picker" hidden>
+    {/* Search / display input */}
+    <div class="combobox-input-wrap">
+      <input
+        type="text"
+        id="font-picker-input"
+        class="combobox-input"
+        role="combobox"
+        aria-haspopup="listbox"
+        aria-expanded="false"
+        aria-controls="font-picker-listbox"
+        aria-autocomplete="list"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="Search fonts…"
+        value={DEFAULT_FONT}
+        data-font-picker-input
+      />
+      <span class="combobox-chevron" aria-hidden="true">▾</span>
+    </div>
+
+    {/* Dropdown listbox */}
+    <div
+      id="font-picker-listbox"
+      class="combobox-listbox"
+      role="listbox"
+      aria-label="Available fonts"
+      hidden
+      data-font-picker-listbox
+    >
+      {/* Pinned group header */}
+      <div class="listbox-group-header" role="presentation">Favourites <span class="listbox-group-count">({pinnedEntries.length})</span></div>
+      {pinnedEntries.map((e) => (
+        <div
+          class="listbox-option"
+          role="option"
+          aria-selected={e.family === DEFAULT_FONT ? 'true' : 'false'}
+          data-family={e.family}
+          data-drop-cap-weight={effectiveDropCap(e) ?? ''}
+          data-pinned="true"
+        >
+          {e.family}
+          <span class="listbox-option-meta">{e.category}</span>
+        </div>
+      ))}
+
+      {/* All-families group header */}
+      <div class="listbox-group-header" role="presentation">All families <span class="listbox-group-count">({otherEntries.length})</span></div>
+      {otherEntries.map((e) => (
+        <div
+          class="listbox-option"
+          role="option"
+          aria-selected="false"
+          data-family={e.family}
+          data-drop-cap-weight={effectiveDropCap(e) ?? ''}
+        >
+          {e.family}
+          <span class="listbox-option-meta">{e.category}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  {/* ─── Loading indicator */}
+  <p class="font-picker-loading" aria-live="polite" data-font-picker-loading hidden>
+    Loading font…
+  </p>
+
+  {/* ─── B2: Custom family input */}
+  <div class="custom-family-wrap" data-custom-family-wrap>
+    <label for="font-picker-custom" class="custom-family-label">
+      Custom family
+    </label>
+    <div class="custom-family-input-row">
+      <input
+        type="text"
+        id="font-picker-custom"
+        class="custom-family-input"
+        placeholder="e.g. Caveat"
+        autocomplete="off"
+        spellcheck="false"
+        aria-describedby="font-picker-custom-advisory font-picker-custom-error"
+        data-font-picker-custom
+      />
+      <button
+        type="button"
+        class="custom-family-load-btn"
+        data-font-picker-custom-load
+        aria-label="Load custom font family"
+      >
+        Load
+      </button>
+    </div>
+    {/* Muted advisory — always visible when a custom family is active */}
+    <p
+      id="font-picker-custom-advisory"
+      class="custom-family-advisory"
+      data-font-picker-custom-advisory
+      hidden
+    >
+      Custom entries aren't pre-filtered for variable-font compatibility.
+      Line breaks may differ on some platforms.
+    </p>
+    {/* Inline error for B2 invalid family name */}
+    <p
+      id="font-picker-custom-error"
+      class="custom-family-error"
+      role="alert"
+      data-font-picker-custom-error
+      hidden
+    >
+    </p>
+  </div>
+</div>
+
+{/* Serialize the manifest and pinned list for the hydration script. */}
+{/* This avoids a runtime fetch and keeps the manifest in the page bundle. */}
+{/* NOTE: Astro does NOT interpolate {expr} inside <script> tags.        */}
+{/* set:html is required here — it writes the JSON as raw text content   */}
+{/* rather than as a template expression, so JSON.parse() in the         */}
+{/* hydration script receives valid JSON, not the literal string          */}
+{/* "{MANIFEST_JSON}".                                                    */}
+<script type="application/json" id="font-picker-manifest-data" set:html={MANIFEST_JSON}></script>
+<script type="application/json" id="font-picker-pinned-data" set:html={PINNED_FAMILIES_JSON}></script>
+
+<script>
+  /**
+   * FontPicker hydration script.
+   *
+   * Lifecycle:
+   *   1. On script load: read manifest from the inline JSON, un-hide the
+   *      custom combobox and hide the <select> fallback.
+   *   2. Input focus / click → open listbox, show all options.
+   *   3. Input typing → filter options, show matching results.
+   *   4. Option click / Enter → select font, close listbox, trigger load.
+   *   5. After load: update `data-current-font`, dispatch
+   *      `pilcrow:font-picker-changed` with `{ family, dropCapWeight }`.
+   *   6. Custom input (B2): Load button click → run `loadFont` from
+   *      `google-fonts.ts`, detect descriptors, dispatch event or show error.
+   *
+   * Settings.astro listens for `pilcrow:font-picker-changed` and re-fires
+   * `pilcrow:settings-changed` with the full settings payload.
+   */
+
+  import { loadFont, detectFontFaceDescriptors, deriveDropCapWeight } from '../../lib/playground/google-fonts.ts';
+
+  // ─── Read manifest from inline JSON ────────────────────────────────────────
+  interface ManifestEntry {
+    family: string;
+    category: 'serif' | 'sans-serif' | 'monospace';
+    weights: number[];
+    hasItalic: boolean;
+    dropCapWeight: number | null;
+    staticOnly: boolean;
+  }
+
+  interface FontPickerChangedDetail {
+    family: string;
+    dropCapWeight: number | null;
+    isCustom: boolean;
+  }
+
+  const manifestDataEl = document.getElementById('font-picker-manifest-data');
+  const pinnedDataEl = document.getElementById('font-picker-pinned-data');
+  if (!manifestDataEl || !pinnedDataEl) {
+    // eslint-disable-next-line no-console
+    console.error('[pilcrow:font-picker] manifest data elements not found');
+  }
+
+  const MANIFEST: ManifestEntry[] = manifestDataEl
+    ? (JSON.parse(manifestDataEl.textContent ?? '[]') as ManifestEntry[])
+    : [];
+  const PINNED_FAMILIES: string[] = pinnedDataEl
+    ? (JSON.parse(pinnedDataEl.textContent ?? '[]') as string[])
+    : [];
+
+  // Build lookup by family name.
+  const MANIFEST_BY_FAMILY = new Map<string, ManifestEntry>(
+    MANIFEST.map((e) => [e.family, e]),
+  );
+
+  // ─── DOM handles ────────────────────────────────────────────────────────────
+  const picker = document.querySelector<HTMLDivElement>('[data-font-picker]');
+  if (!picker) {
+    // eslint-disable-next-line no-console
+    console.error('[pilcrow:font-picker] host element not found');
+  }
+
+  if (picker) {
+    const selectEl = picker.querySelector<HTMLSelectElement>('[data-font-picker-select]');
+    const comboboxWrap = picker.querySelector<HTMLDivElement>('.combobox-wrap');
+    const inputEl = picker.querySelector<HTMLInputElement>('[data-font-picker-input]');
+    const listboxEl = picker.querySelector<HTMLDivElement>('[data-font-picker-listbox]');
+    const loadingEl = picker.querySelector<HTMLParagraphElement>('[data-font-picker-loading]');
+    const customInput = picker.querySelector<HTMLInputElement>('[data-font-picker-custom]');
+    const customLoadBtn = picker.querySelector<HTMLButtonElement>('[data-font-picker-custom-load]');
+    const customAdvisory = picker.querySelector<HTMLParagraphElement>('[data-font-picker-custom-advisory]');
+    const customError = picker.querySelector<HTMLParagraphElement>('[data-font-picker-custom-error]');
+
+    // ─── Progressive enhancement: reveal combobox, hide select ─────────────
+    if (selectEl) selectEl.style.display = 'none';
+    if (comboboxWrap) comboboxWrap.hidden = false;
+
+    // ─── Track state ─────────────────────────────────────────────────────────
+    let currentFamily: string = picker.dataset.currentFont ?? 'Fraunces';
+    let loading = false;
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    const setLoading = (on: boolean): void => {
+      loading = on;
+      if (loadingEl) loadingEl.hidden = !on;
+    };
+
+    const setCurrentFont = (family: string): void => {
+      currentFamily = family;
+      picker.dataset.currentFont = family;
+    };
+
+    const dispatchFontPickerChanged = (
+      family: string,
+      dropCapWeight: number | null,
+      isCustom: boolean,
+    ): void => {
+      const event = new CustomEvent<FontPickerChangedDetail>(
+        'pilcrow:font-picker-changed',
+        {
+          detail: { family, dropCapWeight, isCustom },
+          bubbles: true,
+        },
+      );
+      document.dispatchEvent(event);
+    };
+
+    // ─── Listbox filtering ───────────────────────────────────────────────────
+
+    const openListbox = (): void => {
+      if (!listboxEl || !inputEl) return;
+      listboxEl.hidden = false;
+      inputEl.setAttribute('aria-expanded', 'true');
+    };
+
+    const closeListbox = (): void => {
+      if (!listboxEl || !inputEl) return;
+      listboxEl.hidden = true;
+      inputEl.setAttribute('aria-expanded', 'false');
+      // Restore input value to current family name.
+      inputEl.value = currentFamily;
+    };
+
+    const filterOptions = (query: string): void => {
+      if (!listboxEl) return;
+      const q = query.trim().toLowerCase();
+      const options = listboxEl.querySelectorAll<HTMLDivElement>('.listbox-option');
+      const headers = listboxEl.querySelectorAll<HTMLDivElement>('.listbox-group-header');
+
+      let pinnedVisible = 0;
+      let otherVisible = 0;
+
+      for (const opt of options) {
+        const family = opt.dataset.family ?? '';
+        const isPinned = opt.dataset.pinned === 'true';
+        const matches = q === '' || family.toLowerCase().includes(q);
+        opt.hidden = !matches;
+        if (matches) {
+          if (isPinned) pinnedVisible++;
+          else otherVisible++;
+        }
+      }
+
+      // Show/hide group headers based on whether their group has visible items.
+      const [pinnedHeader, otherHeader] = Array.from(headers);
+      if (pinnedHeader) pinnedHeader.hidden = pinnedVisible === 0;
+      if (otherHeader) otherHeader.hidden = otherVisible === 0;
+    };
+
+    // ─── Font selection ──────────────────────────────────────────────────────
+
+    const selectFont = async (family: string, isCustom: boolean): Promise<void> => {
+      if (loading) return;
+      if (family === currentFamily && !isCustom) return;
+
+      const entry = MANIFEST_BY_FAMILY.get(family);
+      const weights = entry?.weights ?? [400, 700];
+      const hasItalic = entry?.hasItalic ?? true;
+      // Reduce to body-relevant subset: 400, dropCapWeight, 700.
+      const dropCapW = entry?.dropCapWeight ?? null;
+      const bodyWeights = Array.from(
+        new Set([400, ...(dropCapW !== null ? [dropCapW] : []), 700].filter(
+          (w) => weights.includes(w) || !entry, // if no manifest entry, use defaults
+        )),
+      );
+
+      setLoading(true);
+      try {
+        // Six Level-1 pinned families: already loaded via global.css @font-face
+        // + index.astro Google Fonts link. We still call loadFont for correctness
+        // — it's idempotent (skips duplicate <link> injection and resolves
+        // document.fonts.ready for the already-loaded faces).
+        await loadFont(family, bodyWeights, hasItalic);
+
+        setCurrentFont(family);
+        if (inputEl) inputEl.value = family;
+        if (selectEl) selectEl.value = family;
+
+        // Update aria-selected on all options.
+        if (listboxEl) {
+          const options = listboxEl.querySelectorAll<HTMLDivElement>('.listbox-option');
+          for (const opt of options) {
+            opt.setAttribute(
+              'aria-selected',
+              opt.dataset.family === family ? 'true' : 'false',
+            );
+          }
+        }
+
+        dispatchFontPickerChanged(family, dropCapW, isCustom);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(`[pilcrow:font-picker] load failed for "${family}":`, err);
+        // Don't update state — leave currentFamily as-is.
+        if (inputEl) inputEl.value = currentFamily;
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // ─── Wire combobox input ─────────────────────────────────────────────────
+
+    if (inputEl) {
+      inputEl.addEventListener('focus', () => {
+        openListbox();
+        filterOptions(inputEl.value === currentFamily ? '' : inputEl.value);
+      });
+
+      inputEl.addEventListener('click', () => {
+        openListbox();
+        filterOptions(inputEl.value === currentFamily ? '' : inputEl.value);
+      });
+
+      inputEl.addEventListener('input', () => {
+        openListbox();
+        filterOptions(inputEl.value);
+      });
+
+      inputEl.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') {
+          closeListbox();
+          return;
+        }
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          // Find first visible non-hidden option.
+          if (!listboxEl) return;
+          const firstVisible = listboxEl.querySelector<HTMLDivElement>(
+            '.listbox-option:not([hidden])',
+          );
+          if (firstVisible?.dataset.family) {
+            void selectFont(firstVisible.dataset.family, false);
+            closeListbox();
+          }
+          return;
+        }
+        if (ev.key === 'ArrowDown') {
+          ev.preventDefault();
+          openListbox();
+          const opts = Array.from(
+            listboxEl?.querySelectorAll<HTMLDivElement>('.listbox-option:not([hidden])') ?? [],
+          );
+          if (opts[0]) opts[0].focus();
+          return;
+        }
+      });
+
+      inputEl.addEventListener('blur', (ev) => {
+        // Delay close so listbox option clicks can register first.
+        setTimeout(() => {
+          if (!listboxEl?.contains(document.activeElement)) {
+            closeListbox();
+          }
+        }, 150);
+      });
+    }
+
+    // ─── Wire listbox options ────────────────────────────────────────────────
+
+    if (listboxEl) {
+      listboxEl.addEventListener('click', (ev) => {
+        const opt = (ev.target as HTMLElement).closest<HTMLDivElement>('.listbox-option');
+        if (!opt?.dataset.family) return;
+        ev.preventDefault();
+        void selectFont(opt.dataset.family, false);
+        closeListbox();
+      });
+
+      // Keyboard navigation inside the listbox.
+      listboxEl.addEventListener('keydown', (ev) => {
+        const opts = Array.from(
+          listboxEl.querySelectorAll<HTMLDivElement>('.listbox-option:not([hidden])'),
+        );
+        const current = document.activeElement as HTMLDivElement | null;
+        const idx = current ? opts.indexOf(current) : -1;
+
+        if (ev.key === 'ArrowDown') {
+          ev.preventDefault();
+          const next = opts[idx + 1];
+          if (next) next.focus();
+        } else if (ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          if (idx <= 0) {
+            inputEl?.focus();
+          } else {
+            opts[idx - 1]?.focus();
+          }
+        } else if (ev.key === 'Enter' || ev.key === ' ') {
+          ev.preventDefault();
+          const opt = current;
+          if (opt?.dataset.family) {
+            void selectFont(opt.dataset.family, false);
+            closeListbox();
+          }
+        } else if (ev.key === 'Escape') {
+          closeListbox();
+          inputEl?.focus();
+        }
+      });
+
+      // Make options focusable for keyboard nav.
+      listboxEl.querySelectorAll<HTMLDivElement>('.listbox-option').forEach((opt) => {
+        opt.tabIndex = -1;
+      });
+    }
+
+    // ─── Click outside to close ──────────────────────────────────────────────
+    document.addEventListener('click', (ev) => {
+      if (!picker.contains(ev.target as Node)) {
+        closeListbox();
+      }
+    });
+
+    // ─── Native select fallback sync (for JS-disabled state restore) ─────────
+    if (selectEl) {
+      selectEl.addEventListener('change', () => {
+        void selectFont(selectEl.value, false);
+      });
+    }
+
+    // ─── B2: Custom family input ─────────────────────────────────────────────
+
+    const loadCustomFamily = async (): Promise<void> => {
+      if (!customInput) return;
+      const rawFamily = customInput.value.trim();
+      if (!rawFamily) return;
+      if (loading) return;
+
+      // Clear previous error.
+      if (customError) {
+        customError.hidden = true;
+        customError.textContent = '';
+      }
+
+      // Show advisory unconditionally for custom entries (spec §B2).
+      if (customAdvisory) customAdvisory.hidden = false;
+
+      // Check if family is already in the manifest — if so, use the regular path.
+      if (MANIFEST_BY_FAMILY.has(rawFamily)) {
+        void selectFont(rawFamily, false);
+        if (customAdvisory) customAdvisory.hidden = true; // manifest entry, no advisory needed
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // Step 1: load with permissive defaults (400 + 700, italic). The Google
+        // Fonts CSS API silently omits faces that don't exist so no error is
+        // thrown for families without italic.
+        await loadFont(rawFamily, [400, 700], true);
+
+        // Step 2: detect loaded descriptors.
+        const { weights, hasItalic: detectedItalic } = detectFontFaceDescriptors(rawFamily);
+
+        // Step 3: check if any face loaded (empty weights → family not found).
+        if (weights.length === 0) {
+          // No FontFace registered → family name invalid or not on Google Fonts.
+          if (customError) {
+            customError.textContent =
+              'Family not found on Google Fonts. Check the spelling.';
+            customError.hidden = false;
+          }
+          if (customAdvisory) customAdvisory.hidden = true;
+          return;
+        }
+
+        // Step 4: derive drop-cap weight from detected weights.
+        const dropCapW = deriveDropCapWeight(weights);
+
+        // Step 5: update state and dispatch.
+        setCurrentFont(rawFamily);
+        if (inputEl) inputEl.value = rawFamily;
+        if (selectEl) {
+          // Custom entry: add a temporary option if not already present.
+          let customOpt = selectEl.querySelector<HTMLOptionElement>(
+            `option[value="${CSS.escape(rawFamily)}"]`,
+          );
+          if (!customOpt) {
+            customOpt = document.createElement('option');
+            customOpt.value = rawFamily;
+            customOpt.textContent = `${rawFamily} (custom)`;
+            selectEl.appendChild(customOpt);
+          }
+          selectEl.value = rawFamily;
+        }
+
+        dispatchFontPickerChanged(rawFamily, dropCapW, true);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(`[pilcrow:font-picker] custom load failed for "${rawFamily}":`, err);
+        if (customError) {
+          customError.textContent =
+            'Could not load this family. Check the name and your connection.';
+          customError.hidden = false;
+        }
+        if (customAdvisory) customAdvisory.hidden = true;
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (customLoadBtn) {
+      customLoadBtn.addEventListener('click', () => {
+        void loadCustomFamily();
+      });
+    }
+
+    if (customInput) {
+      customInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          void loadCustomFamily();
+        }
+      });
+    }
+
+    // ─── Expose current font for Settings.astro restore path ─────────────────
+    // Settings.astro's applySettingsToDOM (in index.astro) needs to be able
+    // to set the font picker's state when restoring from a share URL. We expose
+    // a setFont method via a custom event listener so the restore script can
+    // drive the picker.
+    document.addEventListener('pilcrow:font-picker-set', (ev) => {
+      const detail = (ev as CustomEvent<{ family: string }>).detail;
+      if (!detail?.family) return;
+      void selectFont(detail.family, false);
+    });
+  }
+</script>
+
+<style>
+  /* ─── Host ─────────────────────────────────────────────────────────────────
+     The picker fills the settings row. Vertical stack: combobox on top,
+     loading indicator + custom input below. */
+  .font-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    position: relative;
+  }
+
+  /* ─── Native select (shown when JS is off, hidden when JS is on) ─────────── */
+  .font-picker-select {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    width: 100%;
+    max-width: 20rem;
+    accent-color: var(--accent);
+  }
+
+  /* ─── Combobox wrapper (hidden until JS enables) ────────────────────────── */
+  .combobox-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .combobox-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .combobox-input {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.85rem;
+    padding: 0.45rem 2rem 0.45rem 0.7rem;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    width: 100%;
+    max-width: 22rem;
+    outline: none;
+    /* No border-radius — editorial restraint. */
+  }
+
+  .combobox-input:focus {
+    border-color: var(--ink);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .combobox-chevron {
+    position: absolute;
+    right: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    pointer-events: none;
+    line-height: 1;
+    /* Keep inside the max-width of the input */
+    max-width: 22rem;
+  }
+
+  /* ─── Listbox dropdown ──────────────────────────────────────────────────── */
+  .combobox-listbox {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    width: 22rem;
+    max-height: 10.5rem; /* D1: half-cut last option = scroll affordance */
+    overflow-y: auto;
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    z-index: 100;
+    /* Token-only border continuation — no floating shadow */
+    box-shadow: 0 2px 0 1px var(--rule);
+    /* Gradient fade signals "more below" */
+    mask-image: linear-gradient(to bottom, black calc(100% - 2rem), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 2rem), transparent 100%);
+    /* Thin always-visible scrollbar (Firefox + Chrome 121+; Safari degrades gracefully) */
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+  }
+
+  .listbox-group-header {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    padding: 0.5rem 0.7rem 0.25rem;
+    background: var(--paper);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .listbox-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.4rem 0.7rem;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.82rem;
+    color: var(--ink);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .listbox-option:hover,
+  .listbox-option:focus {
+    background: var(--rule);
+    outline: none;
+  }
+
+  .listbox-option[aria-selected='true'] {
+    background: var(--rule);
+    box-shadow: inset 3px 0 0 0 var(--accent);
+  }
+
+  .listbox-option-meta {
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  /* Count badge in group headers — picks up header styling then mutes weight/color */
+  .listbox-group-count {
+    color: var(--muted);
+    font-weight: normal;
+  }
+
+  /* ─── Loading indicator ─────────────────────────────────────────────────── */
+  .font-picker-loading {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.4;
+    font-style: italic;
+  }
+
+  /* ─── B2: Custom family input ───────────────────────────────────────────── */
+  .custom-family-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .custom-family-label {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  .custom-family-input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .custom-family-input {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.82rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    width: 14rem;
+    outline: none;
+  }
+
+  .custom-family-input:focus {
+    border-color: var(--ink);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .custom-family-load-btn {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+    line-height: 1.2;
+    transition: border-color 120ms ease, color 120ms ease;
+  }
+
+  .custom-family-load-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .custom-family-load-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Advisory and error messages — compact, muted register. */
+  .custom-family-advisory {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin: 0;
+    line-height: 1.5;
+    font-style: italic;
+  }
+
+  .custom-family-error {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 0.72rem;
+    color: var(--accent);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* Visually-hidden pattern — matches global.css utility. */
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  /* ─── Mobile adjustments ──────────────────────────────────────────────────
+     On narrow viewports, the combobox and custom input expand to full width
+     so they don't feel cramped in the stacked settings panel. */
+  @media (max-width: 767px) {
+    .combobox-input,
+    .font-picker-select {
+      max-width: 100%;
+    }
+
+    .combobox-listbox {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .custom-family-input {
+      width: 100%;
+      flex: 1;
+    }
+  }
+</style>

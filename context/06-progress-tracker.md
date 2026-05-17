@@ -8,14 +8,101 @@
 
 ## Current phase
 
-**Phase:** v3 shipped → playground sprint (Levels 1–3 of `~/Sandbox/PILCROW_PLAYGROUND_PLAN.md`) — Level 1 COMPLETE
-**Current goal:** Launch sequencing (master plan §12): Show HN, ten personal pitches, tweet thread. The playground is the marketing surface — it works. Level 2 (full Google Font picker) and Level 3 (image upload + shape-outside wrap) are the next engineering moves.
+**Phase:** Grid composition sprint — **Spec 02-A COMPLETE**, Spec 02-B active. Playground Level 1 shipped 2026-05-08; Spec 01 (Level 2 font picker) COMPLETED 2026-05-17. Spec 02-A (`:::grid` directive + HTML output + cross-primitive matrix + acceptance gate) COMPLETED 2026-05-17. Spec 02-B (`<GridEditor />`) in flight — three commits shipped (skeleton; inline editing + floating toolbar; top toolbar + context menu + nav refinement).
+**Current goal:** Finish 02-B remaining work (smoke test + axe-core gate; mobile B6c verification), then proceed to Phase 2 — 02-C (playground host integration), 02-D (`/grid/` sibling route), 02-E (`bun run grid` dev tool). Phase 3 outputs (02-F PDF, 02-G EPUB) follow.
 **Owner:** Chanikul
-**Updated:** 2026-05-08
+**Updated:** 2026-05-17
 
 ---
 
 ## In progress
+
+### Spec 02 — Pilcrow Grid Composition sprint (HTML + PDF + EPUB)
+
+**Status:** Sprint plan written 2026-05-17. Master-plan amendment pending. Implementation has not started — Deliverable A spec is scaffolded (`context/feature-specs/02-A-grid-directive-html.md`); full content authored at deliverable kickoff.
+
+**Canonical reference:** `~/Sandbox/PILCROW_GRID_SPRINT_PLAN.md` — read this for sequencing, deliverable breakdown, and rollback strategy.
+
+**Summary spec:** `context/feature-specs/02-playground-grid-composition.md` (index document; carries the locked taste-call decisions table from 2026-05-17).
+
+**Resolved taste calls (2026-05-17):** A3+ (authoring directive for posts + print + ebooks), B1 (three discrete Mila grids 8/16/32), C1 (click-to-edit cells, Figma-like), D3 (color fields + placeholder image fields + monochromatic tint), E1 (default 8 fields), All-three output formats (HTML + PDF + EPUB simultaneously), All-three editor surfaces (playground + sibling route + dev tool). Meta-call R1 selected sprint plan + sub-specs structure (mirrors v3 precedent).
+
+**Deliverables (each independently shippable + revertible):**
+
+| ID | Deliverable | Spec | Phase | Status |
+|----|-------------|------|-------|--------|
+| A | `:::grid` directive + HTML output | `02-A-grid-directive-html.md` | 1 | **COMPLETED 2026-05-17** |
+| B | `<GridEditor />` shared visual editor component | `02-B-grid-editor-component.md` | 1 (parallel A) | **IN PROGRESS** — 3 commits shipped (skeleton + inline-edit + B4a); axe gate + mobile verify remain |
+| C | Playground host (`/playground/` mode switch) | `02-C-playground-host.md` | 2 | SCAFFOLD |
+| D | `/grid/` sibling route | `02-D-grid-sibling-route.md` | 2 (parallel C) | SCAFFOLD |
+| E | `bun run grid` dev-tool host | `02-E-grid-dev-tool.md` | 2 | SCAFFOLD |
+| F | PDF output pipeline | `02-F-pdf-pipeline.md` | 3 | SCAFFOLD |
+| G | EPUB output pipeline | `02-G-epub-pipeline.md` | 3 (parallel F) | SCAFFOLD |
+
+**First implementation step:** Master-plan amendment (sprint plan §2). Until that lands, no `:::grid` directive code touches the main repo. Estimated 1 day for the amendment.
+
+**Deliverable A — first commit shipped 2026-05-17** (no per-cell pretext yet — that's a second commit within A):
+- ✅ Master-plan amendment landed in `~/Sandbox/PILCROW_MASTER_PLAN.md` (§7 PDF accelerated, §9 EPUB exclusions added, §11 entry 24 with full sprint scope).
+- ✅ Full 02-A spec authored at `context/feature-specs/02-A-grid-directive-html.md` (all 5 sub-taste-calls resolved 2026-05-17: A1a, A2a, A3a-i, A4a, A5a).
+- ✅ `packages/pilcrow-typeset/src/plugins/remark-grid.ts` (560+ lines). Parses `:::grid fields=N` + nested `::: cell key=val ::` with bare-attribute tokeniser (custom — remark-directive natively expects curly-brace). Cell layout via row-major occupancy scanner with explicit-position override + collision warn. Cross-primitive detection: sidenote-in-cell warn (hoist via existing rehype-hoist-sidenotes), pullquote-in-cell warn, nested-grid error + neutralise. Image cells render placeholder SVG silhouette (real upload still Level 3). Field bounds clamping. Empty-cell support.
+- ✅ `astro.config.mjs` wires `remarkGrid` last in remarkPlugins (after `remarkShapeAround`).
+- ✅ `public/styles/global.css` adds `.pilcrow-grid` + `.pilcrow-grid-cell` rules, matrix presets via `[data-grid-fields]`, color fills via `[data-cell-fill]`, image placeholder styling, error placeholder styling, mobile fallback at ≤768px.
+- ✅ Sample post `src/content/posts/grid-demo.md` (draft) exercising 8/16/32-field grids, all 4 color fills, image cells, empty cells, sidenote-in-cell cross-primitive case.
+- ✅ `02-architecture.md` invariant 5 updated to document the new plugin order + "no paired rehype-grid" rationale. Decision-log entry appended for 2026-05-17.
+
+**Verification status:**
+- ✅ `tsc --noEmit` clean on the full `packages/pilcrow-typeset/` package (including new `remark-grid.ts`).
+- ✅ Bare-attribute tokeniser unit test 8/8 pass — though the tokeniser itself was later removed after the A1a→A1b correction (see below).
+- ✅ **`bun run build` clean end-to-end on macOS host (Chanikul, 2026-05-17 evening).** All three grid sections (8/16/32 fields) render as spec'd. Drop cap on post lede sets. Image placeholder silhouettes render with X-marked SVG. Color fills (accent / muted / rule) apply correctly. Mobile fallback verified. Cross-primitive sidenote-in-cell case hoists to margin via existing rehype-hoist-sidenotes (A2a working). Build console clean — only the pre-existing inline-markup `<br>` warning, unrelated to grid work.
+- ✅ **Three concrete bugs fixed 2026-05-17 (second build pass):**
+  - Bug 1 (raw `::sidenote` delimiters): Fixed by (a) correcting the cross-primitive demo to use 5-colon grid + 4-colon cells + 3-colon sidenote to avoid colon-depth collision, and (b) extending `rehype-hoist-sidenotes.ts` with a parent-map pre-pass that walks up from grid-cell → pilcrow-grid → post-body to hoist the aside to the correct level.
+  - Bug 2 (caption clipping): Two-part fix: (a) removed `contain: layout` from `.pilcrow-grid-cell` in `global.css` (it was preventing CSS Grid auto-row track-sizing from seeing cell content height), and (b) added grid measurement CSS to the playwright `loaderHTML` (`.pilcrow-grid { display: grid; ... }` + `.pilcrow-grid-cell { padding: ... }`) so `p.clientWidth` returns the correct narrow-cell width during the pretext measurement pass rather than the full prose column width.
+  - Bug 3 (32-field heading mismatch): Updated heading from "editorial, detailed" to "editorial, sparse" and rewrote lede to explain deliberate sparseness (10 cells on a 32-field canvas).
+- ✅ Smoke test `scripts/smoke-grid-demo.ts` — 7/7 pass. Asserts: no raw sidenote delimiters (text walker excluding `<code>`), at least one `aside.sidenote`, no `scrollWidth > clientWidth` on text cells, 32-field heading contains "editorial, sparse", 32-field grid has exactly 10 cells, sidenotes post regression (8 asides present).
+- ⏳ Cross-primitive matrix doc (`context/feature-specs/02-A-cross-primitive-matrix.md`) — observed behaviour now confirmed; can be authored on demand.
+
+**Two A1 syntax corrections landed 2026-05-17 (post first failed build):**
+- ❌ Original A1a (bare `key=value`) was unimplementable — remark-directive only parses curly-brace attributes; bare attributes cause the line to fall back to a paragraph text node. Confirmed via isolated AST tests against actual remark-directive in the project. A1 resolution revised to A1b (curly-brace).
+- ✅ Colon-count rule confirmed: outer container needs MORE colons than inner. `::::grid{fields=8}` outer + `:::cell{id=N}` inner. Equal-count nested openers close the outermost container rather than nesting.
+- Bare-attribute tokeniser in `remark-grid.ts` removed as dead code; the plugin now reads `node.attributes` natively (which remark-directive populates from the curly-brace form). `tsc --noEmit` clean after the refactor.
+
+**02-A COMPLETED 2026-05-17.** All admin closeout shipped:
+- ✅ Per-cell pretext extension in `playwright.ts` (grid-aware `resolvedWidth` + A3a-i drop-cap suppression for cells < 20ch).
+- ✅ Cross-primitive matrix doc at `context/feature-specs/02-A-cross-primitive-matrix.md` (7 combinations documented; sidenote + image cell paths verified, pullquote / footnote / shape-around marked as synthetic-only with follow-ups).
+- ✅ Acceptance gate at `scripts/gate-grid-acceptance.mjs` (12 structural invariants over `dist/posts/grid-demo/index.html`: 4 grids, correct matrices, cell IDs, image SVGs, sidenote hoist, no error placeholders, colspan honoured).
+- ✅ Architecture decision-log + invariant 5 reflect grid sprint state.
+
+### Spec 02-B — `<GridEditor />` shared visual editor component (IN PROGRESS)
+
+Per `context/feature-specs/02-B-grid-editor-component.md`. Six locked taste-call answers 2026-05-17: B1a (Astro + vanilla TS), B2a (inline contenteditable plaintext-only), B3a (plain text — editor ≠ build-time WYSIWYG; documented mismatch), B4a (toolbar + right-click menu), B5a-meta (floating cell-metadata toolbar), B6c (same UI on mobile + collapse).
+
+**Three commits shipped 2026-05-17:**
+
+| Commit | Lines | What landed |
+|--------|-------|-------------|
+| 1. Skeleton (render + select + nav) | ~420 | Parser/serializer utilities + 20/20 round-trip test pass; component renders cells; click-to-select with roving tabindex; arrow-key keyboard nav; Esc deselect; init-race fix via setTimeout(0); dev fixture at `/dev/grid-editor` with 4 mounted instances |
+| 2. Inline editing + floating toolbar | ~700 | Mutable doc + `commit()` per-cell rerender; `contenteditable="plaintext-only"` on Enter/double-click; 250ms-debounced 'user' event; floating toolbar with kind/fill/span controls; hand-rolled positioning (no Floating UI dep); click-outside deselect + exit edit |
+| 3. B4a + nav refinement | ~250 | Top toolbar (field-count switcher + Add cell + cell count); right-click context menu (Delete/Duplicate/Move); Cmd-Backspace + Cmd-D shortcuts; ArrowUp/Down using cell-geometry hit-testing rather than DOM-index approximation |
+
+**Bundle budget:** raw ~12 KB after commit 2; compressed estimate ~4.5 KB; target 10 KB compressed. Headroom analysis at `context/feature-specs/02-B-bundle-budget.md`.
+
+**Pending for 02-B completion:**
+- ⏳ `scripts/smoke-grid-editor.ts` — Playwright-driven axe-core a11y gate + round-trip test
+- ⏳ Mobile B6c verification at 375px viewport
+- ⏳ Re-measure bundle after commit 3 (likely ~14 KB raw, ~5.5 KB compressed)
+
+After 02-B closes, Phase 2 begins: 02-C (playground host integration) is the next logical step since it's the first place the editor stops being a dev fixture and becomes a real product surface.
+
+### Spec 01 — Playground Level 2: Full Google Font Picker
+
+Per `context/feature-specs/01-playground-level-2-font-picker.md`.
+
+| Date | Status |
+|------|--------|
+| 2026-05-17 | Spec finalised (all taste calls answered: A1, B2, C1, D1, F3). Drop-cap weight heuristic documented. B2+C1 runtime-detection path documented. Marked in_progress. Implementation not yet started. |
+| 2026-05-17 | **COMPLETED.** Six-file implementation: committed 57-entry manifest (`google-fonts-manifest.json`), manifest generation script (`scripts/gen-google-fonts-manifest.ts`), `google-fonts.ts` runtime utilities (`loadFont` / `detectFontFaceDescriptors` / `deriveDropCapWeight`), `FontPicker.astro` component (D1 combobox + B2 custom-family input), `Settings.astro` (swatch row replaced with `<FontPicker />`, `pilcrow:font-picker-changed` listener wired, `activeDropCapWeight` state replacing swatch DOM lookup), `index.astro` (preload replaced with preconnect hints, share-URL restore path dispatches `pilcrow:font-picker-set`). Build clean: 19 pages, 3.69s, only pre-existing `<br>` warning. |
+
+---
 
 ### Playground sprint — Level 1 (page shell + components)
 
@@ -113,6 +200,17 @@ These are deferred items from `NOTES.md` and observations from `.claude/learning
 ---
 
 ## Session notes
+
+### 2026-05-17 — Grid composition sprint kickoff (planning landed)
+
+- **Scope-escalation event.** A request to "add the grid feature" with Mila Modern Furniture brand-book screenshots as reference, framed initially as Level 2 substitute, escalated through seven taste calls + one meta-taste-call. Every taste call resolved at maximum-scope option (A3+, B1, C1, D3, E1, all-three-outputs, all-three-hosts). Meta-call R1 chose sprint-plan-plus-sub-specs structure mirroring v3 precedent.
+- **Sprint plan authored** at `~/Sandbox/PILCROW_GRID_SPRINT_PLAN.md`. Seven deliverables A–G sequenced for reversibility across three phases. Critical path A → C → F. Editor (B) parallelises with A; D parallelises with C; G parallelises with F. Estimated 4.5–6 weeks end-to-end.
+- **Spec 02 restructured** from feature-spec to summary/index. Locked taste-call decisions table preserved as canonical decision record. Original 390-line draft preserved in git history.
+- **Seven sub-specs scaffolded** at `context/feature-specs/02-A-*.md` through `02-G-*.md`. Each carries its own per-deliverable sub-taste-calls (framework choice for editor, PDF tool, EPUB tool, etc.) — fleshed out at deliverable kickoff.
+- **Master-plan amendment required** as Deliverable A first sub-task. Adds multi-format output (HTML + PDF + EPUB) to scope; adds `:::grid` as canonical editorial primitive; establishes composition as a new product surface alongside typography.
+- **Architectural tension surfaced + documented.** Pilcrow's brief (project overview, UI context) is *editorial typesetting on a 65ch column*. A grid system is a *layout* primitive. The typography-architect persona's rule 5 (no big-bang feature drops) is technically violated by the scoping; the sprint plan re-introduces reversibility by deliverable-level isolation. Each deliverable can be reverted without unrolling the next.
+- **Spec 01 (font picker)** — taste calls answered same day (A1/B2/C1/D1/F3); spec finalised and implemented. Specs 01 and 02 had no hard dependency.
+- **Next action:** Chanikul confirms ready-to-start on Deliverable A → typography-architect persona authors the full 02-A spec → master-plan amendment lands → directive parser + HTML output implementation begins.
 
 ### 2026-05-08 — pretext #162 fix landed upstream
 - **pretext #162 fix landed upstream.** Cheng Lou shipped commit `f06fef0` fixing the soft-hyphen / rightmin grapheme-packing case as a default-behaviour change (not the opt-in `softHyphenMode: 'strict'` flag the issue proposed: post-SHY grapheme packing removed unconditionally; 100 deletions, 2 additions in `src/line-break.ts`). Acknowledged Pilcrow's bug report as "super clear repro and explanation". Orphan-guard removal becomes actionable on next pretext npm release. Tracked as candidate spec 9 above. First substantive upstream interaction; replied on the issue thread with restrained acknowledgement and Pilcrow link.
